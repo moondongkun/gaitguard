@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    GaitGuard app icon foreground — realistic S-curved spine silhouette.
+    Design reference: icon.png
+    • White anatomical spinal column:
+        - LEFT edge: smooth S-curve (cervical right, thoracic left, lumbar right)
+        - RIGHT edge: 5 distinct vertebral body bumps separated by narrow disc valleys
+        - Narrowest at top (cervical) and bottom (sacrum), widest at thoracic
+        - The spinous processes/vertebral bumps protrude on the right
+    • Orange accent dot, upper-right safe zone
+    Viewport: 108 × 108 dp  |  Safe zone: centre 72 × 72 (x 18–90, y 18–90)
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!--
+        Single closed path tracing the spine silhouette.
+
+        Starts at top-left of cervical spine, traces DOWN the RIGHT side
+        (with 5 vertebral bumps), around the sacrum, then back UP the LEFT
+        side following the S-curve.
+
+        S-curve control:
+          Cervical  (y 20–33):  right of centre, cx≈52
+          Upper T   (y 33–47):  shifting left, cx≈49
+          Mid T     (y 47–62):  left of centre, cx≈45 (widest)
+          Lumbar    (y 62–80):  shifting right, cx≈50
+          Sacrum    (y 80–88):  narrows to tip, cx≈52
+
+        Right edge anatomy (top → bottom):
+          V1 bump peak  ≈ x 66, y 26
+          V2 bump peak  ≈ x 65, y 40
+          V3 bump peak  ≈ x 67, y 54  ← widest (thoracic)
+          V4 bump peak  ≈ x 66, y 67
+          V5 bump peak  ≈ x 64, y 78
+          Sacrum tip    ≈ x 54, y 88
+
+        Left edge S-curve (bottom → top):
+          Sacrum        ≈ x 50, y 88
+          Lumbar        ≈ x 40, y 72
+          Thoracic      ≈ x 36, y 54  ← leftmost
+          Upper T       ≈ x 38, y 40
+          Cervical      ≈ x 43, y 26
+    -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+M 49,20
+C 54,19 62,21 66,26
+C 68,30 63,32 62,34
+C 63,36 66,38 66,40
+C 66,43 63,45 62,47
+C 62,49 68,52 68,55
+C 68,58 63,60 62,62
+C 63,64 67,66 67,68
+C 67,71 63,73 62,75
+C 62,77 64,79 63,82
+C 61,85 57,87 53,88
+L 51,88
+C 48,88 45,86 44,83
+C 43,80 45,78 44,75
+C 43,73 40,71 40,68
+C 39,65 36,63 36,61
+C 35,58 36,55 36,52
+C 36,49 36,48 36,47
+C 35,45 37,43 38,40
+C 39,38 40,36 39,34
+C 38,32 40,30 42,26
+C 44,21 47,19 49,20
+Z
+        " />
+
+    <!-- ── Orange accent dot (upper-right, safe zone) ─────────────────────── -->
+    <!-- centre (76, 26), radius 10.5 -->
+    <path
+        android:fillColor="#FF5230"
+        android:pathData="M 65.5,26 A 10.5,10.5 0 1 0 86.5,26 A 10.5,10.5 0 1 0 65.5,26 Z" />
+
+</vector>

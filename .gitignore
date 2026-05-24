@@ -1,0 +1,39 @@
+# Gradle / Android build output
+.gradle/
+.kotlin/
+build/
+*/build/
+
+# Local machine config
+local.properties
+
+# IDE metadata
+.idea/
+*.iml
+.claude/
+
+# Generated binaries and packaged exports
+*.apk
+*.aab
+*.zip
+*.tar.gz
+apk/
+
+# Logs and temporary files
+*.log
+tmp/
+__pycache__/
+__MACOSX/
+
+# Extracted reference/prototype bundles
+stitch_*/
+
+# Raw training datasets; the app model lives in app/src/main/assets/
+model/UCI HAR Dataset/
+model/WISDM_ar_v1.1/
+model/__MACOSX/
+model/__pycache__/
+
+# OS files
+.DS_Store
+Thumbs.db

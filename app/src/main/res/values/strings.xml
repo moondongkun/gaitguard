@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GaitGuard</string>
+
+    <!-- Bottom Nav -->
+    <string name="nav_metrics">Metrics</string>
+    <string name="nav_live">Live</string>
+    <string name="nav_posture">Posture</string>
+    <string name="nav_history">History</string>
+    <string name="nav_engine">Engine</string>
+
+    <!-- Live Screen -->
+    <string name="session_start">Start Session</string>
+    <string name="session_stop">Stop Session</string>
+    <string name="session_pause">Pause</string>
+    <string name="session_mark">Mark Event</string>
+    <string name="elapsed_time">ELAPSED SESSION TIME</string>
+    <string name="live_data">LIVE DATA</string>
+
+    <!-- Posture Screen -->
+    <string name="posture_instruction">Stand straight and face the camera</string>
+    <string name="posture_camera_permission">Camera permission is required for posture analysis</string>
+    <string name="posture_grant">Grant Access</string>
+    <string name="posture_capture">Capture</string>
+    <string name="posture_flip">Flip Camera</string>
+    <string name="posture_gallery">Gallery</string>
+
+    <!-- Calibration -->
+    <string name="calibration_title">Personal Baseline Calibration</string>
+    <string name="calibration_instruction">Walk normally on flat ground for 2 minutes</string>
+    <string name="calibration_start">Start Walking</string>
+    <string name="calibration_complete">Calibration Complete!</string>
+
+    <!-- Settings -->
+    <string name="settings_caregiver">Caregiver Phone Number</string>
+    <string name="settings_caregiver_hint">+821012345678</string>
+    <string name="settings_recalibrate">Re-record Baseline</string>
+    <string name="settings_export">Export Session History (CSV)</string>
+    <string name="settings_saved">Settings saved</string>
+
+    <!-- Alerts -->
+    <string name="alert_fall_detected">Fall Detected</string>
+    <string name="alert_high_risk">High Fall Risk</string>
+    <string name="alert_dismiss">Dismiss</string>
+    <string name="alert_sms_sent">Emergency SMS sent</string>
+
+    <!-- Engine -->
+    <string name="engine_title">Model Performance &amp; Optimization</string>
+    <string name="engine_subtitle">Neural Engine Core</string>
+    <string name="engine_reoptimize">Re-optimize Model</string>
+
+    <!-- History -->
+    <string name="history_all">All</string>
+    <string name="history_high_fatigue">High Fatigue</string>
+    <string name="history_recent">Recent</string>
+    <string name="history_export">Export CSV</string>
+</resources>
