@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
-import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Memory
@@ -53,7 +52,6 @@ data class NavTab(val route: String, val label: String, val icon: ImageVector)
 val navTabs = listOf(
     NavTab("metrics", "Metrics", Icons.Default.DashboardCustomize),
     NavTab("live",    "Live",    Icons.AutoMirrored.Filled.DirectionsRun),
-    NavTab("posture", "Posture", Icons.Default.AccessibilityNew),
     NavTab("history", "History", Icons.Default.History),
     NavTab("engine",  "Engine",  Icons.Default.Memory),
 )

@@ -17,7 +17,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,19 +31,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -56,12 +58,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -73,7 +75,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.google.mlkit.vision.pose.PoseLandmark
 import com.gaitguard.app.data.model.MetricSeverity
 import com.gaitguard.app.sensor.PostureCoach
-import com.gaitguard.app.ui.components.GaitGuardLockup
 import com.gaitguard.app.ui.components.StatusPill
 import com.gaitguard.app.ui.components.StatusTone
 import com.gaitguard.app.ui.components.pulsingAlpha
@@ -100,6 +101,7 @@ private val LOWER_CONNECTIONS = listOf(23 to 24, 23 to 25, 24 to 26, 25 to 27, 2
 fun PostureScreen(
     viewModel: PostureViewModel,
     hasCameraPermission: Boolean,
+    onNavigateBackToLive: () -> Unit = {},
     onNavigateToHealth: () -> Unit = {},
     onNavigateToResult: () -> Unit = {}
 ) {
@@ -110,10 +112,8 @@ fun PostureScreen(
 
     var viewSize       by remember { mutableStateOf(IntSize.Zero) }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
-    // Selected countdown delay: null = immediate, 2/5/10 = delayed
     var selectedDelay  by remember { mutableStateOf<Int?>(null) }
-    var showHealthSheet by remember { mutableStateOf(false) }
-    val healthSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetScaffoldState = rememberBottomSheetScaffoldState()
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -138,28 +138,25 @@ fun PostureScreen(
         label = "scanY"
     )
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF0A0E14))) {
-        if (showHealthSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showHealthSheet = false },
-                sheetState = healthSheetState,
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
-            ) {
-                SpinalHealthQuickSheet(
-                    score = postureResult.spinalHealthScore,
-                    grade = postureResult.clinicalGrade,
-                    shoulder = abs(postureResult.shoulderLevelDeg).toInt(),
-                    kyphosis = postureResult.kyphosisAngleDeg.toInt(),
-                    axialAligned = postureResult.axialAligned,
-                    onOpenFull = {
-                        showHealthSheet = false
-                        onNavigateToHealth()
-                    }
-                )
-            }
+    BottomSheetScaffold(
+        scaffoldState = sheetScaffoldState,
+        sheetPeekHeight = 82.dp,
+        sheetDragHandle = null,
+        sheetShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+        sheetContainerColor = Color.Transparent,
+        containerColor = Color(0xFF0A0E14),
+        sheetContent = {
+            SpinalHealthQuickSheet(
+                score = postureResult.spinalHealthScore,
+                grade = postureResult.clinicalGrade,
+                shoulder = abs(postureResult.shoulderLevelDeg).toInt(),
+                kyphosis = postureResult.kyphosisAngleDeg.toInt(),
+                axialAligned = postureResult.axialAligned,
+                onOpenFull = onNavigateToHealth
+            )
         }
-
+    ) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF0A0E14))) {
         // ── Camera preview ───────────────────────────────────────────────
         AndroidView(
             factory = { ctx ->
@@ -252,19 +249,29 @@ fun PostureScreen(
             }
         }
 
-        // ── Top bar ──────────────────────────────────────────────────────
+        // ── Back to live ─────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 20.dp, end = 16.dp, top = 52.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 52.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            GaitGuardLockup(onDark = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassIconButton(Icons.Default.Cameraswitch) {
-                    previewViewRef?.let { pv -> viewModel.flipCamera(lifecycleOwner, pv) }
-                }
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(Color(0x9907090E))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(99.dp))
+                    .clickable(onClick = onNavigateBackToLive)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Text("Live", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+            GlassIconButton(Icons.Default.Cameraswitch) {
+                previewViewRef?.let { pv -> viewModel.flipCamera(lifecycleOwner, pv) }
             }
         }
 
@@ -303,169 +310,66 @@ fun PostureScreen(
             }
         }
 
-        // ── Bottom panel ─────────────────────────────────────────────────
+        ClinicalHudStack(
+            score = postureResult.spinalHealthScore,
+            grade = postureResult.clinicalGrade,
+            shoulder = abs(postureResult.shoulderLevelDeg).toInt(),
+            shoulderSeverity = postureResult.shoulderSeverity,
+            kyphosis = postureResult.kyphosisAngleDeg.toInt(),
+            kyphosisSeverity = postureResult.kyphosisSeverity,
+            axialAligned = postureResult.axialAligned,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 14.dp, bottom = 128.dp)
+        )
+
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .padding(bottom = 82.dp)
         ) {
-            SpinalHealthHandle(
-                score = postureResult.spinalHealthScore,
-                grade = postureResult.clinicalGrade,
-                onOpen = { showHealthSheet = true }
-            )
-
-            // Coach tip strip
             if (coachCue != null && postureResult.avgConfidence > 0.4f) {
                 val toneColor = severityColor(coachCue.severity)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(toneColor.copy(alpha = 0.14f))
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                        .background(toneColor.copy(alpha = 0.12f))
+                        .padding(horizontal = 18.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(
-                        Modifier.padding(top = 5.dp).size(5.dp).clip(CircleShape).background(toneColor)
-                    )
+                    Box(Modifier.padding(top = 5.dp).size(5.dp).clip(CircleShape).background(toneColor))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(coachCue.headline, fontSize = 12.sp, color = toneColor,
-                            fontWeight = FontWeight.Bold)
-                        Text(coachCue.detail, fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.82f), lineHeight = 15.sp)
+                        Text(coachCue.headline, fontSize = 12.sp, color = toneColor, fontWeight = FontWeight.Bold)
+                        Text(coachCue.detail, fontSize = 11.sp, color = Color.White.copy(alpha = 0.80f), lineHeight = 15.sp)
                     }
                 }
             }
 
-            // Score + metrics row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xBB07090E))
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                    .padding(start = 28.dp, end = 28.dp, top = 14.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Score block
-                val scoreColor = when {
-                    postureResult.spinalHealthScore >= 70 -> BrandTeal
-                    postureResult.spinalHealthScore >= 50 -> BrandAmber
-                    else -> BrandRed
+                GalleryControl { galleryLauncher.launch("image/*") }
+                ShutterControl {
+                    if (selectedDelay != null) viewModel.startCountdown(selectedDelay!!)
+                    else viewModel.captureNow()
                 }
-                Column(Modifier.weight(1.4f)) {
-                    Text("POSTURE SCORE", style = LabelCapsStyle,
-                        color = Color.White.copy(alpha = 0.52f))
-                    Row(verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(
-                            postureResult.spinalHealthScore.toString(),
-                            fontFamily = LexendFamily, fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold, color = scoreColor,
-                            letterSpacing = (-0.78).sp
-                        )
-                        Text("/ 100", fontSize = 11.sp, color = Color.White.copy(alpha = 0.45f),
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(bottom = 4.dp))
-                    }
-                    Text(postureResult.clinicalGrade, fontSize = 10.sp,
-                        color = scoreColor.copy(alpha = 0.90f), fontWeight = FontWeight.SemiBold)
-                }
-
-                // Vertical divider
-                Box(Modifier.width(1.dp).height(44.dp).background(Color.White.copy(alpha = 0.12f)))
-
-                // 3 mini metrics
-                listOf(
-                    "Shoulder" to "${abs(postureResult.shoulderLevelDeg).toInt()}°",
-                    "Kyphosis" to "${postureResult.kyphosisAngleDeg.toInt()}°",
-                    "Axial"    to if (postureResult.axialAligned) "OK" else "Off"
-                ).forEachIndexed { i, (label, value) ->
-                    val metricSev = when (i) {
-                        0 -> postureResult.shoulderSeverity
-                        1 -> postureResult.kyphosisSeverity
-                        else -> if (postureResult.axialAligned) MetricSeverity.NORMAL else MetricSeverity.ALERT
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f).padding(start = 10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(label, style = LabelCapsStyle, color = Color.White.copy(alpha = 0.50f),
-                            fontSize = 9.sp)
-                        Text(value, fontFamily = LexendFamily, fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold, color = severityColor(metricSev),
-                            letterSpacing = (-0.3).sp)
+                TimerControl(delay = selectedDelay) {
+                    selectedDelay = when (selectedDelay) {
+                        null -> 2
+                        2 -> 5
+                        5 -> 10
+                        else -> null
                     }
                 }
-            }
-
-            // Controls row: countdown selector + shutter + gallery
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xEA07090E))
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Countdown chips: 2s / 5s / 10s
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf(2, 5, 10).forEach { secs ->
-                        val active = selectedDelay == secs
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(99.dp))
-                                .background(
-                                    if (active) Brush.linearGradient(listOf(BrandNavy3, BrandNavy2))
-                                    else Brush.linearGradient(listOf(
-                                        Color.White.copy(alpha = 0.10f),
-                                        Color.White.copy(alpha = 0.06f)
-                                    ))
-                                )
-                                .border(1.dp,
-                                    if (active) Color.Transparent else Color.White.copy(alpha = 0.14f),
-                                    RoundedCornerShape(99.dp))
-                                .clickable {
-                                    selectedDelay = if (active) null else secs
-                                }
-                                .padding(horizontal = 13.dp, vertical = 7.dp)
-                        ) {
-                            Text("${secs}s", fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                color = if (active) Color.White else Color.White.copy(alpha = 0.65f))
-                        }
-                    }
-                }
-
-                // Shutter button
-                Box(
-                    modifier = Modifier
-                        .size(68.dp)
-                        .clip(CircleShape)
-                        .background(Color.White)
-                        .padding(4.dp)
-                        .clickable {
-                            if (selectedDelay != null) viewModel.startCountdown(selectedDelay!!)
-                            else viewModel.captureNow()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(BrandNavy3, BrandNavy2))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.CameraAlt, null, tint = Color.White,
-                            modifier = Modifier.size(24.dp))
-                    }
-                }
-
-                // Gallery button
-                GlassIconButton(Icons.Default.PhotoLibrary) { galleryLauncher.launch("image/*") }
             }
         }
 
-        // ── Gallery analysis loading overlay ─────────────────────────────
         AnimatedVisibility(
             visible  = isAnalyzingGallery,
             enter    = fadeIn(),
@@ -478,17 +382,13 @@ fun PostureScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    CircularProgressIndicator(color = BrandTeal, strokeWidth = 3.dp,
-                        modifier = Modifier.size(52.dp))
-                    Text("Analyzing photo…", fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold, color = Color.White)
-                    Text("ML Kit pose detection running", fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.55f))
+                    CircularProgressIndicator(color = BrandTeal, strokeWidth = 3.dp, modifier = Modifier.size(52.dp))
+                    Text("Analyzing photo...", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    Text("ML Kit pose detection running", fontSize = 11.sp, color = Color.White.copy(alpha = 0.55f))
                 }
             }
         }
 
-        // ── Countdown overlay ────────────────────────────────────────────
         AnimatedVisibility(
             visible  = countdown != null,
             enter    = fadeIn() + scaleIn(initialScale = 0.85f),
@@ -496,15 +396,11 @@ fun PostureScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xBB000000)),
+                modifier = Modifier.fillMaxSize().background(Color(0xBB000000)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         (countdown ?: 0).toString(),
                         fontFamily = LexendFamily,
@@ -513,63 +409,240 @@ fun PostureScreen(
                         color = Color.White,
                         letterSpacing = (-4).sp
                     )
-                    Text("Get ready…", fontSize = 16.sp, color = Color.White.copy(alpha = 0.72f),
+                    Text("Get ready...", fontSize = 16.sp, color = Color.White.copy(alpha = 0.72f),
                         fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        onClick = { viewModel.cancelCountdown() }
-                    ) {
-                        Text("Cancel", fontSize = 14.sp, color = BrandRed,
-                            fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { viewModel.cancelCountdown() }) {
+                        Text("Cancel", fontSize = 14.sp, color = BrandRed, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
         }
     }
+    }
 }
 
 @Composable
-private fun SpinalHealthHandle(
+private fun ClinicalHudStack(
     score: Int,
     grade: String,
-    onOpen: () -> Unit
+    shoulder: Int,
+    shoulderSeverity: MetricSeverity,
+    kyphosis: Int,
+    kyphosisSeverity: MetricSeverity,
+    axialAligned: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val scoreColor = when {
         score >= 70 -> BrandTeal
         score >= 50 -> BrandAmber
         else -> BrandRed
     }
+    val status = when {
+        score >= 85 -> "EXCELLENT"
+        score >= 70 -> "GOOD"
+        score >= 50 -> "WATCH"
+        else -> "ALERT"
+    }
+
+    Column(modifier = modifier.width(152.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(16.dp, RoundedCornerShape(18.dp), clip = false)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0x9907090E))
+                .border(1.dp, scoreColor.copy(alpha = 0.44f), RoundedCornerShape(18.dp))
+                .padding(12.dp)
+        ) {
+            Text("POSTURE SCORE", style = LabelCapsStyle, color = Color.White.copy(alpha = 0.56f))
+            Spacer(Modifier.height(5.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "$score",
+                    fontFamily = LexendFamily,
+                    fontSize = 31.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = scoreColor,
+                    letterSpacing = (-0.8).sp
+                )
+                Column {
+                    Text("/100", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.58f))
+                    Text(status, style = LabelCapsStyle, color = scoreColor, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text(grade, fontSize = 10.sp, color = Color.White.copy(alpha = 0.70f), lineHeight = 13.sp)
+        }
+
+        HudMetricCard("Shoulder Degree", "$shoulder°", severityColor(shoulderSeverity))
+        HudMetricCard("Kyphosis Degree", "$kyphosis°", severityColor(kyphosisSeverity))
+        HudMetricCard(
+            label = "Axial Status",
+            value = if (axialAligned) "OK" else "OFF",
+            color = if (axialAligned) BrandTeal else BrandRed,
+            showStateDot = true
+        )
+    }
+}
+
+@Composable
+private fun HudMetricCard(
+    label: String,
+    value: String,
+    color: Color,
+    showStateDot: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xD907090E))
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -12f) onOpen()
-                }
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0x8F07090E))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label.uppercase(), style = LabelCapsStyle, color = Color.White.copy(alpha = 0.50f), fontSize = 8.5.sp)
+            Text(value, fontFamily = LexendFamily, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
+        }
+        if (showStateDot) Box(Modifier.size(9.dp).clip(CircleShape).background(color))
+    }
+}
+
+@Composable
+private fun GalleryControl(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(62.dp)
+            .shadow(12.dp, RoundedCornerShape(18.dp), clip = false)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+            .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(13.dp))
+                .background(Brush.linearGradient(listOf(BrandTeal2.copy(alpha = 0.45f), BrandNavy3.copy(alpha = 0.60f))))
+                .border(1.dp, Color.White.copy(alpha = 0.26f), RoundedCornerShape(13.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.PhotoLibrary, null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+@Composable
+private fun ShutterControl(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(86.dp)
+            .shadow(18.dp, CircleShape, clip = false)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.24f))
+            .border(1.dp, Color.White.copy(alpha = 0.42f), CircleShape)
+            .clickable(onClick = onClick)
+            .padding(7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(70.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .padding(5.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(BrandNavy3, BrandNavy2))),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(27.dp))
             }
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+        }
+    }
+}
+
+@Composable
+private fun TimerControl(delay: Int?, onClick: () -> Unit) {
+    val label = delay?.let { "${it}S" } ?: "OFF"
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(62.dp)
+                .shadow(12.dp, RoundedCornerShape(18.dp), clip = false)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White.copy(alpha = if (delay == null) 0.10f else 0.18f))
+                .border(
+                    1.dp,
+                    if (delay == null) Color.White.copy(alpha = 0.18f) else BrandTeal.copy(alpha = 0.62f),
+                    RoundedCornerShape(18.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.Timer,
+                null,
+                tint = if (delay == null) Color.White.copy(alpha = 0.72f) else BrandTeal,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        Text(label, style = LabelCapsStyle, color = if (delay == null) Color.White.copy(alpha = 0.58f) else BrandTeal, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun SpinalHealthReportDrawerSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+            .background(Color(0xE607090E))
+            .border(1.dp, BrandTeal.copy(alpha = 0.30f), RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun SpinalHealthReportDrawerHeader(showChevron: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 18.dp, top = 16.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(scoreColor.copy(alpha = 0.16f))
-                .border(1.dp, scoreColor.copy(alpha = 0.55f), CircleShape),
+                .size(46.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(BrandTeal.copy(alpha = 0.14f))
+                .border(1.dp, BrandTeal.copy(alpha = 0.45f), RoundedCornerShape(13.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Text(score.toString(), fontFamily = LexendFamily, fontSize = 15.sp,
-                fontWeight = FontWeight.Bold, color = scoreColor)
+            Icon(Icons.AutoMirrored.Filled.Article, null, tint = BrandTeal, modifier = Modifier.size(24.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text("Spinal Health", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("Swipe up for posture assessment · $grade",
-                fontSize = 11.sp, color = Color.White.copy(alpha = 0.68f))
+            Text("Spinal Health Report", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Real-time biomechanical summary", fontSize = 11.sp, color = Color.White.copy(alpha = 0.66f))
         }
-        Icon(Icons.Default.KeyboardArrowUp, null, tint = Color.White.copy(alpha = 0.82f), modifier = Modifier.size(24.dp))
+        if (showChevron) {
+            Icon(Icons.Default.KeyboardArrowUp, null, tint = Color.White.copy(alpha = 0.82f), modifier = Modifier.size(26.dp))
+        }
     }
 }
 
@@ -582,68 +655,70 @@ private fun SpinalHealthQuickSheet(
     axialAligned: Boolean,
     onOpenFull: () -> Unit
 ) {
-    val t = MaterialTheme.gg
     val scoreColor = when {
         score >= 70 -> BrandTeal
         score >= 50 -> BrandAmber
         else -> BrandRed
     }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(CircleShape)
-                    .background(scoreColor.copy(alpha = 0.12f))
-                    .border(2.dp, scoreColor.copy(alpha = 0.45f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(score.toString(), fontFamily = LexendFamily, fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold, color = scoreColor)
-            }
-            Column(Modifier.weight(1f)) {
-                Text("Spinal Health", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = t.ink)
-                Text(grade, fontSize = 13.sp, color = t.ink3, modifier = Modifier.padding(top = 2.dp))
-            }
-            StatusPill(if (axialAligned) "Aligned" else "Off Axis",
-                if (axialAligned) StatusTone.Good else StatusTone.Warn, dot = false)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            QuickMetric("Shoulder", "$shoulder°", Modifier.weight(1f))
-            QuickMetric("Kyphosis", "$kyphosis°", Modifier.weight(1f))
-            QuickMetric("Axial", if (axialAligned) "OK" else "Off", Modifier.weight(1f))
-        }
-        TextButton(
-            onClick = onOpenFull,
+    SpinalHealthReportDrawerSurface(modifier = Modifier.fillMaxWidth()) {
+        SpinalHealthReportDrawerHeader(showChevron = true)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Brush.linearGradient(listOf(BrandNavy3, BrandNavy2)))
-                .padding(vertical = 6.dp)
+                .padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text("Open Full Assessment", color = Color.White, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(scoreColor.copy(alpha = 0.12f))
+                        .border(2.dp, scoreColor.copy(alpha = 0.45f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(score.toString(), fontFamily = LexendFamily, fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold, color = scoreColor)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("$score / 100", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                    Text(grade, fontSize = 13.sp, color = Color.White.copy(alpha = 0.66f), modifier = Modifier.padding(top = 2.dp))
+                }
+                StatusPill(if (axialAligned) "Aligned" else "Off Axis",
+                    if (axialAligned) StatusTone.Good else StatusTone.Warn, dot = false)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                QuickMetric("Shoulder", "$shoulder°", Modifier.weight(1f))
+                QuickMetric("Kyphosis", "$kyphosis°", Modifier.weight(1f))
+                QuickMetric("Axial", if (axialAligned) "OK" else "Off", Modifier.weight(1f))
+            }
+            TextButton(
+                onClick = onOpenFull,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.linearGradient(listOf(BrandNavy3, BrandNavy2)))
+                    .padding(vertical = 6.dp)
+            ) {
+                Text("Open Full Assessment", color = Color.White, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
 
 @Composable
 private fun QuickMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    val t = MaterialTheme.gg
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(t.surfaceElev)
+            .background(Color.White.copy(alpha = 0.10f))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(value, fontFamily = LexendFamily, fontSize = 18.sp,
-            fontWeight = FontWeight.Bold, color = t.ink)
-        Text(label.uppercase(), style = LabelCapsStyle, color = t.inkMute)
+            fontWeight = FontWeight.Bold, color = Color.White)
+        Text(label.uppercase(), style = LabelCapsStyle, color = Color.White.copy(alpha = 0.58f))
     }
 }
 

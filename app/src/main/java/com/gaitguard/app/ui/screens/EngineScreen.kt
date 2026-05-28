@@ -54,9 +54,9 @@ import com.gaitguard.app.ui.viewmodel.GaitViewModel
 
 // Same benchmark loader as before — reads assets/benchmark.md, falls back to defaults
 private data class BenchmarkValues(
-    val lstmAccWisdm: Float = 97.2f, val tcnAccWisdm: Float = 95.8f, val int8AccWisdm: Float = 94.9f,
-    val lstmAccUci: Float = 96.1f,   val tcnAccUci: Float = 94.7f,   val int8AccUci: Float = 93.8f,
-    val lstmSize: Float = 4.8f,      val tcnSize: Float = 0.9f,      val int8Size: Float = 0.7f,
+    val lstmAccWisdm: Float = 84.7f, val tcnAccWisdm: Float = 81.5f, val int8AccWisdm: Float = 80.7f,
+    val lstmAccUci: Float = 40.4f,   val tcnAccUci: Float = 40.0f,   val int8AccUci: Float = 39.6f,
+    val lstmSize: Float = 0.14f,     val tcnSize: Float = 0.08f,     val int8Size: Float = 0.05f,
     val lstmLatency: Float = 45f,    val tcnLatency: Float = 18f,    val int8Latency: Float = 11f,
     val powerSavings: Int = 74
 ) { companion object {
@@ -68,9 +68,9 @@ private data class BenchmarkValues(
                 cells.getOrNull(col)?.replace(Regex("[^0-9.]"), "")?.toFloatOrNull() ?: def
             val w = row(0); val u = row(1); val s = row(2); val l = row(4)
             BenchmarkValues(
-                f(w,1,97.2f), f(w,2,95.8f), f(w,3,94.9f),
-                f(u,1,96.1f), f(u,2,94.7f), f(u,3,93.8f),
-                f(s,1,4.8f),  f(s,2,0.9f),  f(s,3,0.7f),
+                f(w,1,84.7f), f(w,2,81.5f), f(w,3,80.7f),
+                f(u,1,40.4f), f(u,2,40.0f), f(u,3,39.6f),
+                f(s,1,0.14f), f(s,2,0.08f), f(s,3,0.05f),
                 f(l,1,45f),   f(l,2,18f),   f(l,3,11f)
             )
         } catch (_: Exception) { BenchmarkValues() }
@@ -161,10 +161,10 @@ fun EngineScreen(gaitViewModel: GaitViewModel) {
                     Column {
                         Text("Optimization Benchmarks", fontWeight = FontWeight.Bold,
                             fontSize = 14.sp, color = t.ink)
-                        Text("FP32 LSTM → INT8 TCN", fontSize = 11.sp, color = t.ink3)
+                        Text("FP32 LSTM to INT8 TCN", fontSize = 11.sp, color = t.ink3)
                         Spacer(Modifier.height(10.dp))
                         BenchBar("Accuracy (WISDM)", bm.lstmAccWisdm, bm.int8AccWisdm, "%")
-                        BenchBar("Model size",       bm.lstmSize * 10f, bm.int8Size * 10f, "MB ×10")
+                        BenchBar("Model size",       bm.lstmSize, bm.int8Size, "MB")
                         BenchBar("Latency",          bm.lstmLatency,  bm.int8Latency, "ms")
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -217,10 +217,10 @@ fun EngineScreen(gaitViewModel: GaitViewModel) {
             // Accuracy table
             item {
                 GgCard {
-                    Text("Accuracy Comparison", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = t.ink)
+                    Text("Proxy Accuracy Comparison", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = t.ink)
                     Spacer(Modifier.height(10.dp))
-                    TableHeader(); TableRow("WISDM acc",  "${bm.lstmAccWisdm}%", "${bm.tcnAccWisdm}%", "${bm.int8AccWisdm}%")
-                    TableRow("UCI-HAR",    "${bm.lstmAccUci}%",   "${bm.tcnAccUci}%",   "${bm.int8AccUci}%")
+                    TableHeader(); TableRow("WISDM proxy",  "${bm.lstmAccWisdm}%", "${bm.tcnAccWisdm}%", "${bm.int8AccWisdm}%")
+                    TableRow("UCI sanity", "${bm.lstmAccUci}%",   "${bm.tcnAccUci}%",   "${bm.int8AccUci}%")
                     TableRow("Model size", "${bm.lstmSize}MB",    "${bm.tcnSize}MB",    "${bm.int8Size}MB")
                     TableRow("Latency",    "${bm.lstmLatency}ms", "${bm.tcnLatency}ms", "${bm.int8Latency}ms")
                 }

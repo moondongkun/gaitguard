@@ -330,14 +330,26 @@ def main():
     wf = extract_features(ww)
     uf = extract_features(uw)
 
-    # 80/20 split
-    def split(windows, feats, labels):
-        n   = len(windows)
-        cut = int(n * 0.8)
-        return (windows[:cut], feats[:cut], labels[:cut]), (windows[cut:], feats[cut:], labels[cut:])
+    # Deterministic stratified 80/20 split. The fatigue labels are temporal
+    # proxy labels, so a plain chronological split can leave the hold-out set
+    # dominated by one class and make the accuracy number misleading.
+    def split(windows, feats, labels, seed):
+        rng = np.random.default_rng(seed)
+        train_idx, test_idx = [], []
+        for label in np.unique(labels):
+            idx = np.where(labels == label)[0]
+            rng.shuffle(idx)
+            cut = int(len(idx) * 0.8)
+            train_idx.extend(idx[:cut])
+            test_idx.extend(idx[cut:])
+        train_idx = np.array(sorted(train_idx))
+        test_idx = np.array(sorted(test_idx))
+        return (windows[train_idx], feats[train_idx], labels[train_idx]), (
+            windows[test_idx], feats[test_idx], labels[test_idx]
+        )
 
-    (ww_tr, wf_tr, wy_tr), (ww_te, wf_te, wy_te) = split(ww, wf, wy)
-    (uw_tr, uf_tr, uy_tr), (uw_te, uf_te, uy_te) = split(uw, uf, uy)
+    (ww_tr, wf_tr, wy_tr), (ww_te, wf_te, wy_te) = split(ww, wf, wy, seed=42)
+    (uw_tr, uf_tr, uy_tr), (uw_te, uf_te, uy_te) = split(uw, uf, uy, seed=43)
 
     results = {}
 
@@ -456,30 +468,33 @@ def write_benchmark(results):
     pruned = results.get("pruned", {})
     int8   = results.get("int8",   {})
 
-    def pct(v): return f"{v:.1f}%" if v else "N/A"
-    def mb(v):  return f"{v:.2f} MB" if v else "N/A"
-    def ms(v):  return f"{v:.0f} ms" if v else "N/A"
+    def pct(v): return f"{v:.1f}%" if v is not None else "N/A"
+    def mb(v):  return f"{v:.2f} MB" if v is not None else "N/A"
+    def ms(v):  return f"{v:.0f} ms" if v is not None else "N/A"
     def red(a, b):
         if a and b and a > 0:
             return f"{(1 - b/a)*100:.0f}%"
-        return "—"
+        return "-"
 
     md = f"""# GaitGuard Model Benchmark
 
 | Metric | Full LSTM (baseline) | Pruned TCN | Pruned TCN INT8 |
 |---|---|---|---|
-| Accuracy — WISDM v1.1 hold-out (20% split) | {pct(lstm.get('wisdm'))} | {pct(pruned.get('wisdm'))} | {pct(int8.get('wisdm'))} |
-| Accuracy — UCI-HAR hold-out (20% split) | {pct(lstm.get('uci'))} | {pct(pruned.get('uci'))} | {pct(int8.get('uci'))} |
+| Fatigue-proxy accuracy - WISDM v1.1 stratified hold-out | {pct(lstm.get('wisdm'))} | {pct(pruned.get('wisdm'))} | {pct(int8.get('wisdm'))} |
+| Fatigue-proxy accuracy - UCI-HAR walking stratified hold-out | {pct(lstm.get('uci'))} | {pct(pruned.get('uci'))} | {pct(int8.get('uci'))} |
 | Model size | {mb(lstm.get('mb'))} | {mb(pruned.get('mb'))} | {mb(int8.get('mb'))} |
-| Size reduction vs baseline | — | {red(lstm.get('mb'), pruned.get('mb'))} | {red(lstm.get('mb'), int8.get('mb'))} |
+| Size reduction vs baseline | - | {red(lstm.get('mb'), pruned.get('mb'))} | {red(lstm.get('mb'), int8.get('mb'))} |
 | Inference latency (Galaxy S21) | {ms(lstm.get('latency_ms'))} | {ms(pruned.get('latency_ms'))} | {ms(int8.get('latency_ms'))} |
 
 ## Notes
-- Dataset: WISDM v1.1 walking segments + UCI-HAR walking activity (label 2)
-- Labelling: first 60% of each subject = alert, last 40% = fatigued
+- Primary dataset: WISDM v1.1 walking segments
+- Secondary sanity check: UCI-HAR walking subset, evaluated as a cross-dataset fatigue-proxy transfer task
+- Labeling: first 60% of each walking stream = normal/fresh proxy, last 40% = fatigue proxy
+- Split: deterministic stratified 80/20 hold-out to keep both proxy classes in train and test
 - Window: 200 samples @ 50 Hz (4 s), 50% overlap
-- Pruning: 85% weight sparsity via tfmot ConstantSparsity
+- Pruning: polynomial sparsity schedule from 50% to 85%, then strip pruning wrappers
 - Quantization: representative post-training quantization is attempted first; if the local TFLite converter cannot calibrate SeparableConv1D, the script falls back to dynamic-range quantization with float input/output for Android compatibility
+- Accuracy is for the public-dataset fatigue proxy task used to validate optimization, not a clinical fatigue diagnosis
 - Latency measured on Samsung Galaxy S21 (Exynos 2100) with GPU delegate
 """
 

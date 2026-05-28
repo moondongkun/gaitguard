@@ -176,9 +176,9 @@ class GaitViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleAlerts(result: GaitResult) {
         when (result.alertLevel) {
             AlertLevel.RED -> {
-                vibrate(longArrayOf(0, 200, 100, 200, 100, 200))
-                if (alertPlayer == null) startAlertTone()
-                handleHighRiskSms(result)
+                vibrate(longArrayOf(0, 200, 100, 200))
+                stopAlertTone()
+                highRiskJob?.cancel()
             }
             AlertLevel.AMBER -> {
                 vibrate(longArrayOf(0, 150))
@@ -206,6 +206,7 @@ class GaitViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleTrueFall() {
         repository.onTrueFall()
         vibrate(longArrayOf(0, 500, 100, 500, 100, 500))
+        if (alertPlayer == null) startAlertTone()
         _uiState.value = _uiState.value.copy(showFallAlert = true)
         viewModelScope.launch {
             sendEmergencySms("Fall detected")

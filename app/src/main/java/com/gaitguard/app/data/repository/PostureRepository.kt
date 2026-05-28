@@ -1,8 +1,11 @@
 package com.gaitguard.app.data.repository
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
 import android.util.Log
+import androidx.exifinterface.media.ExifInterface
 import com.google.mlkit.vision.common.InputImage
 import com.gaitguard.app.data.db.GaitDatabase
 import com.gaitguard.app.data.db.PostureSnapshot
@@ -57,11 +60,29 @@ class PostureRepository(private val context: Context) {
      */
     suspend fun analyzeStaticImage(uri: Uri): PostureResult {
         return try {
-            val inputImage = InputImage.fromFilePath(context, uri)
-            analyzer.analyzeStaticImage(inputImage, inputImage.width, inputImage.height)
+            val bitmap = loadUprightBitmap(uri)
+            val inputImage = InputImage.fromBitmap(bitmap, 0)
+            analyzer.analyzeStaticImage(inputImage, bitmap.width, bitmap.height)
         } catch (e: Exception) {
             Log.e("PostureRepository", "Static image analysis failed: ${e.message}")
             PostureResult(avgConfidence = 0f)
         }
+    }
+
+    private fun loadUprightBitmap(uri: Uri): android.graphics.Bitmap {
+        val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            ?: throw IllegalArgumentException("Unable to decode image")
+        val rotation = context.contentResolver.openInputStream(uri)?.use { input ->
+            val exif = ExifInterface(input)
+            when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+        } ?: 0f
+        if (rotation == 0f) return bitmap
+        val matrix = Matrix().apply { postRotate(rotation) }
+        return android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 }

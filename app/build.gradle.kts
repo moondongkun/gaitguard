@@ -122,6 +122,7 @@ dependencies {
 
     // Core KTX
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // Test
     testImplementation("junit:junit:4.13.2")

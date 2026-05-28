@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessibilityNew
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -66,7 +68,10 @@ import com.gaitguard.app.util.GaitConstants
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun LiveScreen(viewModel: GaitViewModel) {
+fun LiveScreen(
+    viewModel: GaitViewModel,
+    onNavigateToPosture: () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsState()
     val result   = uiState.gaitResult
     val t = MaterialTheme.gg
@@ -164,6 +169,8 @@ fun LiveScreen(viewModel: GaitViewModel) {
                 if (uiState.markedEvents.isNotEmpty())
                     StatusPill("${uiState.markedEvents.size} marked", StatusTone.Warn)
             }
+
+            PostureAnalysisCallout(onClick = onNavigateToPosture)
 
             // ── Waveform ─────────────────────────────────
             GgCard {
@@ -309,6 +316,38 @@ fun LiveScreen(viewModel: GaitViewModel) {
 
             Spacer(Modifier.height(80.dp))
         }
+    }
+}
+
+@Composable
+private fun PostureAnalysisCallout(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(14.dp, RoundedCornerShape(18.dp), clip = false,
+                ambientColor = BrandTeal.copy(alpha = 0.18f),
+                spotColor = BrandTeal.copy(alpha = 0.24f))
+            .clip(RoundedCornerShape(18.dp))
+            .background(Brush.linearGradient(listOf(BrandTeal2, BrandNavy3)))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Color.White.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.AccessibilityNew, null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text("Check posture", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            Text("Open the live camera posture view", color = Color.White.copy(alpha = 0.76f), fontSize = 12.sp)
+        }
+        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color.White, modifier = Modifier.size(20.dp))
     }
 }
 

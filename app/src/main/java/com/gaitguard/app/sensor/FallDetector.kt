@@ -51,14 +51,11 @@ class FallDetector(private val onEvent: (FallEvent) -> Unit) {
     // ── Fall FSM ────────────────────────────────────────────────────────────
 
     private fun processFallFSM(magnitude: Float, ts: Long) {
-        if (ts - lastFallEventMs < 2_000L) return
+        if (ts - lastFallEventMs < 8_000L) return
 
         when (fallState) {
             FallState.NORMAL -> {
-                if (magnitude > GaitConstants.IMPACT_MS2 * 1.15f) {
-                    lastFallEventMs = ts
-                    onEvent(FallEvent.TrueFall)
-                } else if (magnitude < GaitConstants.FREEFALL_MS2) {
+                if (magnitude < GaitConstants.FREEFALL_MS2) {
                     freefallSampleCount = 1
                     fallState = FallState.FREEFALL
                 }
@@ -77,12 +74,14 @@ class FallDetector(private val onEvent: (FallEvent) -> Unit) {
             }
             FallState.IMPACT_WINDOW -> {
                 val elapsed = ts - impactWindowStartMs
-                if (magnitude > GaitConstants.IMPACT_MS2) {
+                if (magnitude > GaitConstants.IMPACT_MS2 * 1.20f) {
                     lastFallEventMs = ts
                     onEvent(FallEvent.TrueFall)
                     fallState = FallState.NORMAL
+                    freefallSampleCount = 0
                 } else if (elapsed > GaitConstants.IMPACT_WINDOW_MS) {
                     fallState = FallState.NORMAL
+                    freefallSampleCount = 0
                 }
             }
         }
@@ -130,6 +129,7 @@ class FallDetector(private val onEvent: (FallEvent) -> Unit) {
     fun reset() {
         fallState = FallState.NORMAL
         freefallSampleCount = 0
+        lastFallEventMs = 0L
         inStumble = false
         latBaseline.clear()
         rollReversalMs = 0L

@@ -2,7 +2,9 @@ package com.gaitguard.app.ui.components
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -181,7 +183,21 @@ private fun loadPostureBitmap(context: Context, photoUri: String?): android.grap
     if (photoUri.isNullOrBlank()) return null
     return try {
         val uri = Uri.parse(photoUri)
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            ?: return null
+        val rotation = context.contentResolver.openInputStream(uri)?.use { input ->
+            val exif = ExifInterface(input)
+            when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+        } ?: 0f
+        if (rotation == 0f) bitmap else {
+            val matrix = Matrix().apply { postRotate(rotation) }
+            android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        }
     } catch (_: Exception) {
         null
     }

@@ -38,7 +38,7 @@ import com.gaitguard.app.ui.viewmodel.GaitViewModel
 import com.gaitguard.app.ui.viewmodel.HistoryViewModel
 import com.gaitguard.app.ui.viewmodel.PostureViewModel
 
-private val noNavBarRoutes = setOf("calibration", "settings", "walktest", "replay", "posture_health", "posture_result")
+private val noNavBarRoutes = setOf("calibration", "settings", "walktest", "replay", "posture", "posture_health", "posture_result")
 
 @Composable
 fun AppNavigation(hasCameraPermission: Boolean) {
@@ -84,12 +84,21 @@ fun AppNavigation(hasCameraPermission: Boolean) {
                     )
                 }
                 composable("live") {
-                    LiveScreen(viewModel = gaitVm)
+                    LiveScreen(
+                        viewModel = gaitVm,
+                        onNavigateToPosture = { navController.navigate("posture") }
+                    )
                 }
                 composable("posture") {
                     PostureScreen(
                         viewModel           = postureVm,
                         hasCameraPermission = hasCameraPermission,
+                        onNavigateBackToLive = {
+                            navController.navigate("live") {
+                                popUpTo("live") { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        },
                         onNavigateToHealth  = { navController.navigate("posture_health") },
                         onNavigateToResult  = { navController.navigate("posture_result") }
                     )
