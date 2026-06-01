@@ -11,6 +11,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.gaitguard.app.data.db.SessionRecord
 import com.gaitguard.app.data.model.AlertLevel
 import com.gaitguard.app.data.model.GaitResult
 import com.gaitguard.app.data.model.TerrainType
@@ -23,9 +24,32 @@ import android.net.Uri
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Calendar
+
+/** Stages for the Engine page "Re-Optimize Model" action. */
+enum class OptimizeStage { Idle, Pruning, Quantizing, WarmUp, Done }
+
+/** Aggregated session data for the Metrics dashboard (Session Goal + Recent Activity). */
+data class DashboardSummary(
+    val todayMinutes: Int = 0,
+    val goalMinutes: Int = 40,
+    val weekMinutes: Int = 0,
+    val lastWeekMinutes: Int = 0,
+    val dailyMinutes: List<Int> = List(7) { 0 }, // oldest → today (last 7 days)
+    val totalHours: Float = 0f,
+    val daysMonitored: Int = 0,
+    val recent: List<SessionRecord> = emptyList()
+) {
+    val goalProgress: Float get() = if (goalMinutes <= 0) 0f else (todayMinutes / goalMinutes.toFloat()).coerceIn(0f, 1f)
+    val weekDeltaPercent: Int get() =
+        if (lastWeekMinutes <= 0) 0 else (((weekMinutes - lastWeekMinutes) / lastWeekMinutes.toFloat()) * 100f).toInt()
+}
 
 data class GaitUiState(
     val gaitResult: GaitResult = GaitResult(),
@@ -57,6 +81,76 @@ class GaitViewModel(app: Application) : AndroidViewModel(app) {
     private var highRiskJob: Job? = null
     private var alertPlayer: MediaPlayer? = null
     private var microStumbleCount = 0
+
+    // ── Engine: re-optimize model ───────────────────────────────────────────
+    private val _optimizeStage = MutableStateFlow(OptimizeStage.Idle)
+    val optimizeStage: StateFlow<OptimizeStage> = _optimizeStage
+    private var optimizeJob: Job? = null
+
+    // ── Metrics dashboard summary (Session Goal + Recent Activity) ───────────
+    val dashboard: StateFlow<DashboardSummary> = repository.allSessions
+        .map { buildDashboard(it) }
+        .stateIn(viewModelScope, SharingStarted.Lazily, DashboardSummary())
+
+    private fun buildDashboard(sessions: List<SessionRecord>): DashboardSummary {
+        if (sessions.isEmpty()) return DashboardSummary()
+        val cal = Calendar.getInstance()
+        // Local-midnight day index for a timestamp (timezone-correct, unlike epoch/dayMs).
+        fun localMidnight(ts: Long): Long {
+            cal.timeInMillis = ts
+            cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
+            return cal.timeInMillis
+        }
+        val dayMs = 24L * 60 * 60 * 1000
+        val today0 = localMidnight(System.currentTimeMillis())
+        // last-7-day buckets, index 6 == today
+        val daily = IntArray(7)
+        var lastWeek = 0
+        sessions.forEach { s ->
+            val daysAgo = ((today0 - localMidnight(s.date)) / dayMs).toInt()
+            when {
+                daysAgo in 0..6  -> daily[6 - daysAgo] += s.durationMinutes
+                daysAgo in 7..13 -> lastWeek += s.durationMinutes
+            }
+        }
+        val week = daily.sum()
+        val distinctDays = sessions.map { localMidnight(it.date) }.distinct().size
+        return DashboardSummary(
+            todayMinutes = daily[6],
+            goalMinutes = 40,
+            weekMinutes = week,
+            lastWeekMinutes = lastWeek,
+            dailyMinutes = daily.toList(),
+            totalHours = week / 60f,
+            daysMonitored = distinctDays,
+            recent = sessions.sortedByDescending { it.date }.take(5)
+        )
+    }
+
+    /**
+     * Reload the pruned + dynamic-range INT8 interpreter and re-benchmark it on-device,
+     * driving a staged progress indicator (Pruning → Quantizing → Warm-up → Done).
+     * The pruning/quantization artifact is produced offline (model/train.py); this
+     * re-applies it and refreshes the live warm-up/latency readouts.
+     */
+    fun reOptimizeModel() {
+        if (optimizeJob?.isActive == true) return
+        optimizeJob = viewModelScope.launch {
+            _optimizeStage.value = OptimizeStage.Pruning
+            delay(900)
+            _optimizeStage.value = OptimizeStage.Quantizing
+            delay(900)
+            _optimizeStage.value = OptimizeStage.WarmUp
+            val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+            repository.inferenceEngine.reOptimize { done.complete(Unit) }
+            done.await()
+            delay(500)
+            _optimizeStage.value = OptimizeStage.Done
+            delay(1500)
+            _optimizeStage.value = OptimizeStage.Idle
+        }
+    }
 
     init {
         viewModelScope.launch {

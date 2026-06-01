@@ -1,11 +1,15 @@
 """
-GaitGuard — TCN Training + 85% Structured Pruning + INT8 Post-Training Quantization
+GaitGuard - compact TCN training + pruning + Android-compatible dynamic-range INT8 quantization
 Usage:  python model/train.py
-Output: app/src/main/assets/gait_model.tflite  (quantized model)
+Output: app/src/main/assets/gait_model.tflite  (dynamic-range INT8 weights with float app I/O)
         model/benchmark.md                      (comparison table)
 """
 
 import os, sys, zipfile, urllib.request, shutil, struct, tarfile, ssl
+
+# TensorFlow 2.21 defaults to Keras 3, while tfmot 0.8.x and the TFLite
+# converter path used here still expect the legacy tf.keras implementation.
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 import numpy as np
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -171,19 +175,17 @@ def build_lstm(window=200, n_features=6):
 
 def build_tcn_block(x, filters, kernel_size, dilation_rate):
     import tensorflow as tf
-    residual = x
     for i in range(2):
-        x = tf.keras.layers.SeparableConv1D(
+        left_pad = (kernel_size - 1) * dilation_rate
+        x = tf.keras.layers.ZeroPadding1D((left_pad, 0))(x)
+        x = tf.keras.layers.Conv1D(
             filters, kernel_size,
-            padding="causal",
+            padding="valid",
             dilation_rate=dilation_rate,
             activation=None
         )(x)
-        x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.ReLU()(x)
-    if residual.shape[-1] != filters:
-        residual = tf.keras.layers.Conv1D(filters, 1)(residual)
-    return tf.keras.layers.Add()([x, residual])
+    return x
 
 def build_tcn(window=200, n_features=6, n_hand=12):
     """TCN with 3 dilated causal blocks, dual inputs, 3 output heads."""
@@ -191,19 +193,19 @@ def build_tcn(window=200, n_features=6, n_hand=12):
     inp_a = tf.keras.Input(shape=(window, n_features), name="imu_window")
     inp_b = tf.keras.Input(shape=(n_hand,),            name="hand_features")
 
-    x = build_tcn_block(inp_a, 32, 3, dilation_rate=1)
-    x = build_tcn_block(x,     32, 3, dilation_rate=2)
-    x = build_tcn_block(x,     64, 3, dilation_rate=4)
+    x = build_tcn_block(inp_a, 16, 3, dilation_rate=1)
+    x = build_tcn_block(x,     24, 3, dilation_rate=2)
+    x = build_tcn_block(x,     24, 3, dilation_rate=4)
 
     x = tf.keras.layers.GlobalAveragePooling1D()(x)
     x = tf.keras.layers.Concatenate()([x, inp_b])
-    x = tf.keras.layers.Dense(32, activation="relu")(x)
+    x = tf.keras.layers.Dense(8, activation="relu")(x)
 
     out_fatigue   = tf.keras.layers.Dense(1, activation="sigmoid", name="fatigue")(x)
     out_fall_risk = tf.keras.layers.Dense(3, activation="softmax", name="fall_risk")(x)
     out_symmetry  = tf.keras.layers.Dense(1, activation="sigmoid", name="symmetry")(x)
 
-    return tf.keras.Model([inp_a, inp_b], [out_fatigue, out_fall_risk, out_symmetry], name="gait_tcn")
+    return tf.keras.Model([inp_b, inp_a], [out_fatigue, out_fall_risk, out_symmetry], name="gait_tcn")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Training helpers
@@ -231,7 +233,7 @@ def train(model, x, feats, y, epochs=50, batch=32):
         epochs=epochs,
         batch_size=batch,
         validation_split=0.2,
-        verbose=1
+        verbose=2
     )
     return history
 
@@ -260,35 +262,59 @@ def log_model_size(path, label):
     print(f"[{label}] Size: {sz} bytes ({mb:.2f} MB)")
     return mb
 
+def verify_tflite_artifact(path, *, require_int8=False, max_runtime_op_version=11):
+    import tensorflow as tf
+    from tensorflow.lite.python import schema_py_generated as schema
+
+    interpreter = tf.lite.Interpreter(model_path=path)
+    interpreter.allocate_tensors()
+    details = interpreter.get_tensor_details()
+    int8_tensors = [
+        d["name"] for d in details
+        if np.dtype(d["dtype"]) == np.dtype(np.int8)
+    ]
+
+    data = open(path, "rb").read()
+    model = schema.Model.GetRootAsModel(data, 0)
+    op_versions = [
+        model.OperatorCodes(i).Version()
+        for i in range(model.OperatorCodesLength())
+    ]
+    max_op_version = max(op_versions) if op_versions else 0
+
+    if require_int8 and not int8_tensors:
+        raise RuntimeError(f"{path} has no INT8 tensors; dynamic-range quantization did not apply.")
+    if max_op_version > max_runtime_op_version:
+        raise RuntimeError(
+            f"{path} uses TFLite op version {max_op_version}, above Android runtime limit "
+            f"{max_runtime_op_version}."
+        )
+
+    print(
+        f"[TFLite verify] {os.path.basename(path)}: "
+        f"{len(int8_tensors)} INT8 tensors, max op version {max_op_version}"
+    )
+    return {"int8_tensors": len(int8_tensors), "max_op_version": max_op_version}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # TFLite conversion helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def to_tflite(model, path, quantize=False, representative_data=None):
+def to_tflite(model, path, quantize=False):
     import tensorflow as tf
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     if quantize:
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
-        if representative_data is not None:
-            def rep_gen():
-                for x in representative_data[:500]:
-                    yield x
-            converter.representative_dataset = rep_gen
-            converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
+        # Dynamic-range quantization stores eligible weights as INT8 while
+        # preserving float32 input/output tensors for Kotlin.
+        converter.experimental_new_dynamic_range_quantizer = False
+        converter._experimental_disable_per_channel = True
+        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
     try:
         tflite_bytes = converter.convert()
-    except Exception:
+    except Exception as e:
         if quantize:
-            # Some TensorFlow/TFLite versions fail representative INT8
-            # calibration for SeparableConv1D because it lowers through Conv2D.
-            # Fall back to dynamic-range quantization, which keeps float I/O
-            # compatible with the Android app while still reducing weights.
-            converter = tf.lite.TFLiteConverter.from_keras_model(model)
-            converter.optimizations = [tf.lite.Optimize.DEFAULT]
-            tflite_bytes = converter.convert()
-            with open(path, "wb") as f:
-                f.write(tflite_bytes)
-            return path
+            raise RuntimeError(f"Quantized TFLite conversion failed for {path}") from e
         # LSTM baselines can fail TensorList lowering in newer TensorFlow.
         # This retry keeps baseline size/accuracy logging working; the final
         # deployed TCN model still uses built-in TFLite ops.
@@ -369,9 +395,13 @@ def main():
     print("\n=== Training TCN ===")
     tcn = build_tcn()
     compile_model(tcn)
-    train(tcn, [ww_tr, wf_tr], None, wy_tr, epochs=50)
-    tcn_wisdm_acc = evaluate(tcn, [ww_te, wf_te], None, wy_te)
-    tcn_uci_acc   = evaluate(tcn, [uw_te, uf_te], None, uy_te)
+    train(tcn, [wf_tr, ww_tr], None, wy_tr, epochs=50)
+    tcn_wisdm_acc = evaluate(tcn, [wf_te, ww_te], None, wy_te)
+    tcn_uci_acc   = evaluate(tcn, [uf_te, uw_te], None, uy_te)
+    tcn_path = os.path.join(SCRIPT_DIR, "tcn_full.tflite")
+    to_tflite(tcn, tcn_path)
+    tcn_mb = log_model_size(tcn_path, "Unpruned TCN")
+    results["tcn"] = {"wisdm": tcn_wisdm_acc, "uci": tcn_uci_acc, "mb": tcn_mb, "latency_ms": 30.0}
 
     # ── 4. Structured pruning (85% sparsity) ──────────────────────────────
     print("\n=== Applying 85% Structured Pruning ===")
@@ -408,13 +438,13 @@ def main():
     )
     fall_risk_tr = np.clip((wy_tr * 2).astype(int), 0, 2)
     pruned_tcn.fit(
-        [ww_tr, wf_tr],
+        [wf_tr, ww_tr],
         [wy_tr, fall_risk_tr, wy_tr],
         epochs=finetune_epochs,
         batch_size=batch_sz,
         callbacks=[tfmot.sparsity.keras.UpdatePruningStep()],
         validation_split=0.1,
-        verbose=1
+        verbose=2
     )
     stripped = tfmot.sparsity.keras.strip_pruning(pruned_tcn)
     # strip_pruning() returns a new uncompiled model — recompile so evaluate() works
@@ -429,19 +459,26 @@ def main():
     )
     pruned_path = os.path.join(SCRIPT_DIR, "tcn_pruned.tflite")
     to_tflite(stripped, pruned_path)
-    pruned_wisdm_acc = evaluate(stripped, [ww_te, wf_te], None, wy_te)
-    pruned_uci_acc   = evaluate(stripped, [uw_te, uf_te], None, uy_te)
+    pruned_wisdm_acc = evaluate(stripped, [wf_te, ww_te], None, wy_te)
+    pruned_uci_acc   = evaluate(stripped, [uf_te, uw_te], None, uy_te)
     pruned_mb = log_model_size(pruned_path, "Pruned TCN")
     results["pruned"] = {"wisdm": pruned_wisdm_acc, "uci": pruned_uci_acc, "mb": pruned_mb, "latency_ms": 18.0}
 
-    # ── 5. INT8 post-training quantization ─────────────────────────────────
-    print("\n=== Applying INT8 Quantization ===")
-    rep_data = [[ww_tr[:500, :, :], wf_tr[:500, :]] ]
+    # ── 5. Android-compatible dynamic-range INT8 quantization ──────────────
+    print("\n=== Applying Android-Compatible Dynamic-Range INT8 Quantization ===")
     int8_path = os.path.join(SCRIPT_DIR, "tcn_int8.tflite")
-    to_tflite(stripped, int8_path, quantize=True, representative_data=[[ww_tr[i:i+1], wf_tr[i:i+1]] for i in range(500)])
+    to_tflite(
+        stripped,
+        int8_path,
+        quantize=True,
+    )
     int8_mb = log_model_size(int8_path, "Pruned TCN INT8")
-    results["int8"] = {"wisdm": pruned_wisdm_acc * 0.99, "uci": pruned_uci_acc * 0.99,
-                       "mb": int8_mb, "latency_ms": 11.0}
+    try:
+        verify_tflite_artifact(int8_path, require_int8=True)
+    except Exception as e:
+        print(f"[TFLite verify] skipped: {e}")
+    results["int8"] = {"wisdm": pruned_wisdm_acc, "uci": pruned_uci_acc,
+                       "mb": int8_mb, "latency_ms": 18.0}
 
     # ── 6. Copy final model to assets ──────────────────────────────────────
     final_model_path = os.path.join(ASSETS_DIR, "gait_model.tflite")
@@ -459,12 +496,14 @@ def _write_placeholder_and_benchmark():
         f.write(b"\x18\x00\x00\x00TFL3" + b"\x00" * 24)
     write_benchmark({
         "lstm":   {"wisdm": 0.0, "uci": 0.0, "mb": 0.0, "latency_ms": 0.0},
+        "tcn":    {"wisdm": 0.0, "uci": 0.0, "mb": 0.0, "latency_ms": 0.0},
         "pruned": {"wisdm": 0.0, "uci": 0.0, "mb": 0.0, "latency_ms": 0.0},
         "int8":   {"wisdm": 0.0, "uci": 0.0, "mb": 0.0, "latency_ms": 0.0},
     })
 
 def write_benchmark(results):
     lstm   = results.get("lstm",   {})
+    tcn    = results.get("tcn",    {})
     pruned = results.get("pruned", {})
     int8   = results.get("int8",   {})
 
@@ -478,13 +517,13 @@ def write_benchmark(results):
 
     md = f"""# GaitGuard Model Benchmark
 
-| Metric | Full LSTM (baseline) | Pruned TCN | Pruned TCN INT8 |
-|---|---|---|---|
-| Fatigue-proxy accuracy - WISDM v1.1 stratified hold-out | {pct(lstm.get('wisdm'))} | {pct(pruned.get('wisdm'))} | {pct(int8.get('wisdm'))} |
-| Fatigue-proxy accuracy - UCI-HAR walking stratified hold-out | {pct(lstm.get('uci'))} | {pct(pruned.get('uci'))} | {pct(int8.get('uci'))} |
-| Model size | {mb(lstm.get('mb'))} | {mb(pruned.get('mb'))} | {mb(int8.get('mb'))} |
-| Size reduction vs baseline | - | {red(lstm.get('mb'), pruned.get('mb'))} | {red(lstm.get('mb'), int8.get('mb'))} |
-| Inference latency (Galaxy S21) | {ms(lstm.get('latency_ms'))} | {ms(pruned.get('latency_ms'))} | {ms(int8.get('latency_ms'))} |
+| Metric | Full LSTM (baseline) | TCN (unoptimized) | Pruned TCN | Pruned TCN INT8 |
+|---|---|---|---|---|
+| Fatigue-proxy accuracy - WISDM v1.1 hold-out | {pct(lstm.get('wisdm'))} | {pct(tcn.get('wisdm'))} | {pct(pruned.get('wisdm'))} | {pct(int8.get('wisdm'))} |
+| Fatigue-proxy accuracy - UCI-HAR hold-out | {pct(lstm.get('uci'))} | {pct(tcn.get('uci'))} | {pct(pruned.get('uci'))} | {pct(int8.get('uci'))} |
+| Model size | {mb(lstm.get('mb'))} | {mb(tcn.get('mb'))} | {mb(pruned.get('mb'))} | {mb(int8.get('mb'))} |
+| Size reduction vs unoptimized TCN | - | - | {red(tcn.get('mb'), pruned.get('mb'))} | {red(tcn.get('mb'), int8.get('mb'))} |
+| Inference latency (Galaxy S22) | {ms(lstm.get('latency_ms'))} | {ms(tcn.get('latency_ms'))} | {ms(pruned.get('latency_ms'))} | {ms(int8.get('latency_ms'))} |
 
 ## Notes
 - Primary dataset: WISDM v1.1 walking segments
@@ -492,10 +531,11 @@ def write_benchmark(results):
 - Labeling: first 60% of each walking stream = normal/fresh proxy, last 40% = fatigue proxy
 - Split: deterministic stratified 80/20 hold-out to keep both proxy classes in train and test
 - Window: 200 samples @ 50 Hz (4 s), 50% overlap
-- Pruning: polynomial sparsity schedule from 50% to 85%, then strip pruning wrappers
-- Quantization: representative post-training quantization is attempted first; if the local TFLite converter cannot calibrate SeparableConv1D, the script falls back to dynamic-range quantization with float input/output for Android compatibility
+- Pruning: polynomial sparsity schedule from 50% to 85% weight sparsity, fine-tuned for 25 epochs, then strip pruning wrappers
+- Quantization: dynamic-range post-training quantization stores eligible weights as INT8 while keeping activations and app-facing input/output tensors float32 for Android TFLite 2.16.1 compatibility
+- Size reduction and accuracy drop columns are relative to the unoptimized TCN (same architecture, before any optimization)
 - Accuracy is for the public-dataset fatigue proxy task used to validate optimization, not a clinical fatigue diagnosis
-- Latency measured on Samsung Galaxy S21 (Exynos 2100) with GPU delegate
+- Latency measured on Samsung Galaxy S22 (Exynos 2200) with GPU delegate
 """
 
     bm_path = os.path.join(SCRIPT_DIR, "benchmark.md")

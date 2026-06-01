@@ -310,42 +310,42 @@ fun PostureScreen(
             }
         }
 
-        ClinicalHudStack(
-            score = postureResult.spinalHealthScore,
-            grade = postureResult.clinicalGrade,
-            shoulder = abs(postureResult.shoulderLevelDeg).toInt(),
-            shoulderSeverity = postureResult.shoulderSeverity,
-            kyphosis = postureResult.kyphosisAngleDeg.toInt(),
-            kyphosisSeverity = postureResult.kyphosisSeverity,
-            axialAligned = postureResult.axialAligned,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 14.dp, bottom = 128.dp)
-        )
-
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(bottom = 82.dp)
         ) {
+            // Coach cue — slim pill, centered
             if (coachCue != null && postureResult.avgConfidence > 0.4f) {
                 val toneColor = severityColor(coachCue.severity)
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(toneColor.copy(alpha = 0.12f))
-                        .padding(horizontal = 18.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(toneColor.copy(alpha = 0.14f))
+                        .border(1.dp, toneColor.copy(alpha = 0.30f), RoundedCornerShape(99.dp))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    Box(Modifier.padding(top = 5.dp).size(5.dp).clip(CircleShape).background(toneColor))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(coachCue.headline, fontSize = 12.sp, color = toneColor, fontWeight = FontWeight.Bold)
-                        Text(coachCue.detail, fontSize = 11.sp, color = Color.White.copy(alpha = 0.80f), lineHeight = 15.sp)
-                    }
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(toneColor))
+                    Text(coachCue.headline, fontSize = 12.sp, color = toneColor, fontWeight = FontWeight.Bold)
                 }
+                Spacer(Modifier.height(10.dp))
             }
+
+            // ── Slim metrics bar (single glass row, keeps body in frame) ──
+            SlimMetricsBar(
+                score = postureResult.spinalHealthScore,
+                shoulder = abs(postureResult.shoulderLevelDeg).toInt(),
+                shoulderSeverity = postureResult.shoulderSeverity,
+                kyphosis = postureResult.kyphosisAngleDeg.toInt(),
+                kyphosisSeverity = postureResult.kyphosisSeverity,
+                axialAligned = postureResult.axialAligned,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(14.dp))
 
             Row(
                 modifier = Modifier
@@ -422,10 +422,15 @@ fun PostureScreen(
     }
 }
 
+/**
+ * Slim glass metrics strip (single row) that sits above the capture controls.
+ * Shows the live posture score + SHOULDER / KYPHOSIS / AXIAL; each value inherits
+ * the same severity color as its skeleton region. Deliberately slim so it doesn't
+ * cover the body in frame.
+ */
 @Composable
-private fun ClinicalHudStack(
+private fun SlimMetricsBar(
     score: Int,
-    grade: String,
     shoulder: Int,
     shoulderSeverity: MetricSeverity,
     kyphosis: Int,
@@ -436,78 +441,61 @@ private fun ClinicalHudStack(
     val scoreColor = when {
         score >= 70 -> BrandTeal
         score >= 50 -> BrandAmber
-        else -> BrandRed
+        else        -> BrandRed
     }
     val status = when {
         score >= 85 -> "EXCELLENT"
         score >= 70 -> "GOOD"
         score >= 50 -> "WATCH"
-        else -> "ALERT"
+        else        -> "ALERT"
     }
-
-    Column(modifier = modifier.width(152.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .shadow(16.dp, RoundedCornerShape(18.dp), clip = false)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0x9907090E))
-                .border(1.dp, scoreColor.copy(alpha = 0.44f), RoundedCornerShape(18.dp))
-                .padding(12.dp)
-        ) {
-            Text("POSTURE SCORE", style = LabelCapsStyle, color = Color.White.copy(alpha = 0.56f))
-            Spacer(Modifier.height(5.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "$score",
-                    fontFamily = LexendFamily,
-                    fontSize = 31.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = scoreColor,
-                    letterSpacing = (-0.8).sp
-                )
-                Column {
-                    Text("/100", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.58f))
-                    Text(status, style = LabelCapsStyle, color = scoreColor, fontWeight = FontWeight.Bold)
-                }
-            }
-            Text(grade, fontSize = 10.sp, color = Color.White.copy(alpha = 0.70f), lineHeight = 13.sp)
-        }
-
-        HudMetricCard("Shoulder Degree", "$shoulder°", severityColor(shoulderSeverity))
-        HudMetricCard("Kyphosis Degree", "$kyphosis°", severityColor(kyphosisSeverity))
-        HudMetricCard(
-            label = "Axial Status",
-            value = if (axialAligned) "OK" else "OFF",
-            color = if (axialAligned) BrandTeal else BrandRed,
-            showStateDot = true
-        )
+    Row(
+        modifier = modifier
+            .shadow(10.dp, RoundedCornerShape(16.dp), clip = false)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x8007090E))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 8.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MetricSeg(label = status, value = score.toString(), color = scoreColor, weight = 1.1f)
+        MetricDivider()
+        MetricSeg(label = "SHOULDER", value = "$shoulder°", color = severityColor(shoulderSeverity))
+        MetricDivider()
+        MetricSeg(label = "KYPHOSIS", value = "$kyphosis°", color = severityColor(kyphosisSeverity))
+        MetricDivider()
+        MetricSeg(label = "AXIAL", value = if (axialAligned) "OK" else "OFF",
+            color = if (axialAligned) BrandTeal else BrandRed)
     }
 }
 
 @Composable
-private fun HudMetricCard(
+private fun androidx.compose.foundation.layout.RowScope.MetricSeg(
     label: String,
     value: String,
     color: Color,
-    showStateDot: Boolean = false
+    weight: Float = 1f
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0x8F07090E))
-            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Column(
+        modifier = Modifier.weight(weight),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(label.uppercase(), style = LabelCapsStyle, color = Color.White.copy(alpha = 0.50f), fontSize = 8.5.sp)
-            Text(value, fontFamily = LexendFamily, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
-        }
-        if (showStateDot) Box(Modifier.size(9.dp).clip(CircleShape).background(color))
+        Text(value, fontFamily = LexendFamily, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+            color = color, maxLines = 1)
+        Text(label, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp,
+            color = Color.White.copy(alpha = 0.5f), maxLines = 1)
     }
+}
+
+@Composable
+private fun MetricDivider() {
+    Box(
+        Modifier
+            .width(1.dp)
+            .height(28.dp)
+            .background(Color.White.copy(alpha = 0.12f))
+    )
 }
 
 @Composable
@@ -610,9 +598,19 @@ private fun SpinalHealthReportDrawerSurface(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
-            .background(Color(0xE607090E))
+            .background(Color(0xF207090E))
             .border(1.dp, BrandTeal.copy(alpha = 0.30f), RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
     ) {
+        // Drag handle affordance
+        Box(
+            Modifier.fillMaxWidth().padding(top = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(99.dp))
+                    .background(Color.White.copy(alpha = 0.28f))
+            )
+        }
         content()
     }
 }
@@ -668,29 +666,24 @@ private fun SpinalHealthQuickSheet(
                 .padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(scoreColor.copy(alpha = 0.12f))
-                        .border(2.dp, scoreColor.copy(alpha = 0.45f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(score.toString(), fontFamily = LexendFamily, fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold, color = scoreColor)
-                }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                MiniScoreRing(score = score, color = scoreColor)
                 Column(Modifier.weight(1f)) {
-                    Text("$score / 100", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-                    Text(grade, fontSize = 13.sp, color = Color.White.copy(alpha = 0.66f), modifier = Modifier.padding(top = 2.dp))
+                    Text("SPINAL HEALTH SCORE", style = LabelCapsStyle, color = Color.White.copy(alpha = 0.55f))
+                    Spacer(Modifier.height(3.dp))
+                    Text(grade, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White,
+                        letterSpacing = (-0.3).sp)
                 }
                 StatusPill(if (axialAligned) "Aligned" else "Off Axis",
                     if (axialAligned) StatusTone.Good else StatusTone.Warn, dot = false)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                QuickMetric("Shoulder", "$shoulder°", Modifier.weight(1f))
-                QuickMetric("Kyphosis", "$kyphosis°", Modifier.weight(1f))
-                QuickMetric("Axial", if (axialAligned) "OK" else "Off", Modifier.weight(1f))
+                val shoulderColor = when { shoulder > 5 -> BrandRed; shoulder > 2 -> BrandAmber; else -> BrandTeal }
+                val kyphosisColor = when { kyphosis > 50 -> BrandRed; kyphosis > 40 -> BrandAmber; else -> BrandTeal }
+                QuickMetric("Shoulder", "$shoulder°", shoulderColor, Modifier.weight(1f))
+                QuickMetric("Kyphosis", "$kyphosis°", kyphosisColor, Modifier.weight(1f))
+                QuickMetric("Axial", if (axialAligned) "OK" else "Off",
+                    if (axialAligned) BrandTeal else BrandRed, Modifier.weight(1f))
             }
             TextButton(
                 onClick = onOpenFull,
@@ -707,19 +700,54 @@ private fun SpinalHealthQuickSheet(
 }
 
 @Composable
-private fun QuickMetric(label: String, value: String, modifier: Modifier = Modifier) {
+private fun QuickMetric(label: String, value: String, valueColor: Color = Color.White, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.10f))
-            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
-            .padding(12.dp),
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, valueColor.copy(alpha = 0.30f), RoundedCornerShape(12.dp))
+            .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(value, fontFamily = LexendFamily, fontSize = 18.sp,
-            fontWeight = FontWeight.Bold, color = Color.White)
-        Text(label.uppercase(), style = LabelCapsStyle, color = Color.White.copy(alpha = 0.58f))
+            fontWeight = FontWeight.Bold, color = valueColor)
+        Spacer(Modifier.height(2.dp))
+        Text(label.uppercase(), style = LabelCapsStyle, color = Color.White.copy(alpha = 0.55f))
     }
+}
+
+@Composable
+private fun MiniScoreRing(score: Int, color: Color, sizeDp: androidx.compose.ui.unit.Dp = 60.dp) {
+    val appear = pulsingAppear(score)
+    val pct = (score.coerceIn(0, 100) / 100f) * appear
+    Box(Modifier.size(sizeDp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(sizeDp)) {
+            val stroke = 6.dp.toPx()
+            val r = (size.minDimension - stroke) / 2f
+            drawCircle(color = Color.White.copy(alpha = 0.16f), radius = r,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+            drawArc(
+                brush = Brush.sweepGradient(listOf(color.copy(alpha = 0.7f), color)),
+                startAngle = -90f, sweepAngle = 360f * pct, useCenter = false,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = StrokeCap.Round)
+            )
+        }
+        Text(score.toString(), fontFamily = LexendFamily, fontSize = 18.sp,
+            fontWeight = FontWeight.Bold, color = Color.White)
+    }
+}
+
+/** One-shot ease-in for the drawer ring (re-keys when [key] changes). */
+@Composable
+private fun pulsingAppear(key: Any?): Float {
+    var play by remember(key) { mutableStateOf(false) }
+    val p by animateFloatAsState(
+        targetValue = if (play) 1f else 0f,
+        animationSpec = tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "ringAppear"
+    )
+    LaunchedEffect(key) { play = true }
+    return p
 }
 
 @Composable

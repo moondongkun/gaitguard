@@ -21,8 +21,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.automirrored.filled.TrendingFlat
@@ -63,6 +65,7 @@ import com.gaitguard.app.ui.components.HeroGradientCard
 import com.gaitguard.app.ui.components.SessionCard
 import com.gaitguard.app.ui.components.StatusPill
 import com.gaitguard.app.ui.components.StatusTone
+import com.gaitguard.app.ui.components.rememberAppearProgress
 import com.gaitguard.app.ui.theme.BrandNavy2
 import com.gaitguard.app.ui.theme.BrandNavy3
 import com.gaitguard.app.ui.theme.BrandAmber
@@ -82,7 +85,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel,
-    onSessionClick: (Long) -> Unit = {}
+    onSessionClick: (Long) -> Unit = {},
+    onNavigateToLive: () -> Unit = {}
 ) {
     val sessions by viewModel.sessions.collectAsState()
     val filter   by viewModel.activeFilter.collectAsState()
@@ -119,55 +123,30 @@ fun HistoryScreen(
                 }
                 item {
                     Column {
-                        Text("Gait Dashboard", style = HeadlineLgStyle, color = t.ink)
+                        Text("ANALYSIS", style = LabelCapsStyle, color = t.inkMute)
+                        Spacer(Modifier.height(6.dp))
+                        Text("Gait Quality Trend", style = HeadlineLgStyle, color = t.ink)
                         Spacer(Modifier.height(2.dp))
                         Text("${sessions.size} sessions tracked", fontSize = 13.sp, color = t.ink3)
                     }
                 }
 
-                item {
-                    HeroGradientCard(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(20.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(18.dp)
-                        ) {
-                            DashboardScoreRing(currentGlobalScore)
-                            Column(Modifier.weight(1f)) {
-                                Text("GLOBAL GAIT SCORE", style = LabelCapsStyle,
-                                    color = Color.White.copy(alpha = 0.72f))
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    when {
-                                        currentGlobalScore >= 85f -> "Excellent Rhythm"
-                                        currentGlobalScore >= 70f -> "Stable Mobility"
-                                        currentGlobalScore >= 55f -> "Needs Attention"
-                                        else -> "High Risk Pattern"
-                                    },
-                                    fontSize = 21.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    letterSpacing = (-0.32).sp
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "Computed from fatigue, symmetry, endurance, and fall-risk events.",
-                                    fontSize = 12.sp,
-                                    color = Color.White.copy(alpha = 0.74f),
-                                    lineHeight = 17.sp
-                                )
-                            }
-                        }
-                    }
-                }
-
+                // ── Weekly Global Score Trend (primary chart) ──
                 item {
                     GgCard(elevated = true) {
                         TrendHeader("Weekly Global Score", "${weeklyGlobalScores.lastOrNull()?.toInt() ?: 0}",
-                            "7-day summary", color = BrandNavy3, deltaIsLabel = true)
+                            "7-day trend", color = BrandNavy3, deltaIsLabel = true)
                         Spacer(Modifier.height(14.dp))
                         WeeklyGlobalBarChart(weeklyGlobalScores)
                     }
+                }
+
+                // ── AI Recommendation ──────────────────────────
+                item {
+                    val (insight, action) = remember(sessions, postureHealth) {
+                        aiRecommendation(sessions, currentGlobalScore, postureHealth)
+                    }
+                    AiRecommendationCard(insight = insight, action = action, onAction = onNavigateToLive)
                 }
 
                 item {
@@ -326,36 +305,58 @@ private fun TrendHeader(
 }
 
 @Composable
-private fun DashboardScoreRing(score: Float, size: androidx.compose.ui.unit.Dp = 96.dp) {
-    val pct = score.coerceIn(0f, 100f) / 100f
-    val ringColor = when {
-        score >= 70f -> BrandTeal
-        score >= 55f -> BrandAmber
-        else -> BrandRed
+private fun AiRecommendationCard(insight: String, action: String, onAction: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF1442B8), Color(0xFF0A2A7A))))
+            .padding(20.dp)
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Lightbulb, null, tint = Color(0xFF9FC0FF), modifier = Modifier.size(16.dp))
+                Text("AI RECOMMENDATION", style = LabelCapsStyle, color = Color(0xFF9FC0FF))
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(insight, fontFamily = LexendFamily, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                color = Color.White, lineHeight = 24.sp, letterSpacing = (-0.2).sp)
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(BrandTeal)
+                    .clickable { onAction() }
+                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Text(action, color = Color(0xFF04231F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color(0xFF04231F),
+                    modifier = Modifier.size(14.dp))
+            }
+        }
     }
-    Box(modifier = Modifier.size(size), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(size)) {
-            val stroke = 8.dp.toPx()
-            val r = (this.size.minDimension - stroke) / 2f
-            drawCircle(color = Color.White.copy(alpha = 0.18f), radius = r,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-            drawArc(
-                brush = Brush.sweepGradient(listOf(ringColor.copy(alpha = 0.65f), ringColor)),
-                startAngle = -90f,
-                sweepAngle = 360f * pct,
-                useCenter = false,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                    stroke,
-                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
-            )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(score.toInt().toString(), fontFamily = LexendFamily, fontSize = 28.sp,
-                fontWeight = FontWeight.SemiBold, color = Color.White, letterSpacing = (-0.7).sp)
-            Text("/ 100", fontSize = 10.sp, color = Color.White.copy(alpha = 0.65f),
-                fontWeight = FontWeight.SemiBold)
-        }
+}
+
+/** Rule-based spinal/gait recommendation: returns (insight, actionLabel). */
+private fun aiRecommendation(
+    sessions: List<com.gaitguard.app.data.db.SessionRecord>,
+    currentScore: Float,
+    postureHealth: List<Float>
+): Pair<String, String> {
+    val latest = sessions.firstOrNull()
+        ?: return "Start your first session to unlock personalized gait and spinal insights." to "Start a session"
+    val postureNonZero = postureHealth.filter { it > 0f }
+    val postureDeclining = postureNonZero.size >= 2 && postureNonZero.last() < postureNonZero.first()
+    return when {
+        latest.peakFatigueScore >= 60f || currentScore < 55f ->
+            "Fatigue is trending up across recent sessions — shorter, more frequent walks aid recovery." to "Schedule rest"
+        latest.avgSymmetryScore < 90f ->
+            "Stride symmetry is drifting below 90%. A focused gait-retraining walk can rebalance left/right load." to "Start a walk"
+        postureDeclining ->
+            "Your spinal health score dipped this week. A posture reset session can restore alignment." to "Start a session"
+        else ->
+            "Gait quality is stable and improving. Maintain your current routine for continued gains." to "Start a walk"
     }
 }
 
@@ -363,6 +364,7 @@ private fun DashboardScoreRing(score: Float, size: androidx.compose.ui.unit.Dp =
 private fun WeeklyGlobalBarChart(values: List<Float>) {
     val t = MaterialTheme.gg
     val data = if (values.size >= 7) values.takeLast(7) else values + List(7 - values.size) { 0f }
+    val appear = rememberAppearProgress(values, durationMs = 1000)
     Column {
         Canvas(Modifier.fillMaxWidth().height(116.dp)) {
             val gap = 7.dp.toPx()
@@ -370,7 +372,10 @@ private fun WeeklyGlobalBarChart(values: List<Float>) {
             val maxH = size.height - 6.dp.toPx()
             data.forEachIndexed { index, value ->
                 val left = index * (barWidth + gap)
-                val h = if (value > 0f) (value.coerceIn(0f, 100f) / 100f) * maxH else 5.dp.toPx()
+                // left→right staggered grow
+                val barProg = ((appear * 7f) - index).coerceIn(0f, 1f)
+                val fullH = if (value > 0f) (value.coerceIn(0f, 100f) / 100f) * maxH else 5.dp.toPx()
+                val h = fullH * barProg
                 val top = size.height - h
                 val color = when {
                     value <= 0f -> t.border.copy(alpha = 0.55f)
@@ -384,7 +389,7 @@ private fun WeeklyGlobalBarChart(values: List<Float>) {
                     size = Size(barWidth, size.height),
                     cornerRadius = CornerRadius(5.dp.toPx())
                 )
-                drawRoundRect(
+                if (h > 0.5f) drawRoundRect(
                     brush = Brush.verticalGradient(listOf(color, color.copy(alpha = 0.52f))),
                     topLeft = Offset(left, top),
                     size = Size(barWidth, h),
@@ -481,6 +486,7 @@ private fun TrendChart(data: List<Float>, color: Color) {
                 mode = LineDataSet.Mode.CUBIC_BEZIER
             }
             chart.data = LineData(set)
+            chart.animateX(800)
             chart.invalidate()
         }
     )

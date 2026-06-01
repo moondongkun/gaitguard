@@ -27,6 +27,7 @@ class FallDetector(private val onEvent: (FallEvent) -> Unit) {
     // Gyro roll reversal detection
     private var prevRollGy = 0f
     private var rollReversalMs = 0L
+    private var lastStumbleEventMs = 0L
 
     /**
      * Feed one aligned sensor sample. [sample] = FloatArray(6).
@@ -92,7 +93,8 @@ class FallDetector(private val onEvent: (FallEvent) -> Unit) {
     private fun processMicroStumble(latAcc: Float, rollGy: Float, ts: Long) {
         val baseline = if (latBaseline.isNotEmpty())
             latBaseline.map { kotlin.math.abs(it) }.average().toFloat() else 1f
-        val threshold = (baseline * GaitConstants.MICRO_STUMBLE_MULT).coerceAtLeast(1.2f)
+        val threshold = (baseline * GaitConstants.MICRO_STUMBLE_MULT)
+            .coerceAtLeast(GaitConstants.MICRO_STUMBLE_FLOOR)
 
         if (!inStumble) {
             if (kotlin.math.abs(latAcc) > threshold) {
@@ -116,7 +118,12 @@ class FallDetector(private val onEvent: (FallEvent) -> Unit) {
         if (rollReversalMs > 0) {
             val sinceSt = ts - rollReversalMs
             if (sinceSt <= GaitConstants.GYRO_REVERSAL_MS) {
-                if (prevRollGy * rollGy < 0f) {  // sign reversal
+                // Require a meaningful roll reversal (not microscopic noise) and respect cooldown
+                if (prevRollGy * rollGy < 0f &&
+                    kotlin.math.abs(prevRollGy - rollGy) > 0.15f &&
+                    ts - lastStumbleEventMs >= GaitConstants.MICRO_STUMBLE_COOLDOWN_MS
+                ) {
+                    lastStumbleEventMs = ts
                     onEvent(FallEvent.MicroStumble)
                     rollReversalMs = 0L
                 }
@@ -133,5 +140,6 @@ class FallDetector(private val onEvent: (FallEvent) -> Unit) {
         inStumble = false
         latBaseline.clear()
         rollReversalMs = 0L
+        lastStumbleEventMs = 0L
     }
 }

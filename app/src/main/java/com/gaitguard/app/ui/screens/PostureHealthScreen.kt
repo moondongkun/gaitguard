@@ -77,6 +77,7 @@ import com.gaitguard.app.ui.components.AmbientBackdrop
 import com.gaitguard.app.ui.components.GgCard
 import com.gaitguard.app.ui.components.HeroGradientCard
 import com.gaitguard.app.ui.components.PosturePhotoThumbnail
+import com.gaitguard.app.ui.components.rememberAppearProgress
 import com.gaitguard.app.ui.components.StatusPill
 import com.gaitguard.app.ui.components.StatusTone
 import com.gaitguard.app.ui.theme.BrandAmber
@@ -567,6 +568,7 @@ private fun WeeklyBarChart(data: List<Float>) {
         else           -> data + List(7 - data.size) { 0f }
     }
     val maxVal = barData.maxOrNull()?.coerceAtLeast(1f) ?: 100f
+    val appear = rememberAppearProgress(data, durationMs = 1000)
 
     Column {
         Canvas(modifier = Modifier.fillMaxWidth().height(100.dp)) {
@@ -576,7 +578,10 @@ private fun WeeklyBarChart(data: List<Float>) {
             val maxBarH   = size.height - 4.dp.toPx()
 
             barData.forEachIndexed { i, value ->
-                val barH    = if (value > 0f) (value / maxVal) * maxBarH else 4.dp.toPx()
+                // left→right staggered grow
+                val barProg = ((appear * 7f) - i).coerceIn(0f, 1f)
+                val fullH   = if (value > 0f) (value / maxVal) * maxBarH else 4.dp.toPx()
+                val barH    = fullH * barProg
                 val left    = i * (barWidth + gap)
                 val top     = size.height - barH
                 val barColor = when {
@@ -593,7 +598,7 @@ private fun WeeklyBarChart(data: List<Float>) {
                     cornerRadius = CornerRadius(4.dp.toPx())
                 )
                 // Filled bar
-                if (barH > 4.dp.toPx()) {
+                if (barH > 0.5f) {
                     drawRoundRect(
                         brush  = Brush.verticalGradient(
                             colors = listOf(barColor, barColor.copy(alpha = 0.55f)),
@@ -961,7 +966,8 @@ private fun BodyAreaAccordion(
 
 @Composable
 private fun SpinalHealthRing(score: Int, sizeDp: androidx.compose.ui.unit.Dp = 100.dp) {
-    val pct = score.coerceIn(0, 100) / 100f
+    val appear = rememberAppearProgress(score, durationMs = 1100)
+    val pct = (score.coerceIn(0, 100) / 100f) * appear
     val arcColor = when {
         score >= 70 -> BrandTeal
         score >= 50 -> BrandAmber

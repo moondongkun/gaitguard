@@ -80,7 +80,13 @@ fun AppNavigation(hasCameraPermission: Boolean) {
                     MetricsScreen(
                         viewModel            = gaitVm,
                         onNavigateToLive     = { navController.navigate("live") },
-                        onNavigateToSettings = { navController.navigate("settings") }
+                        onNavigateToSettings = { navController.navigate("settings") },
+                        onNavigateToHistory  = {
+                            navController.navigate("history") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
                     )
                 }
                 composable("live") {
@@ -121,6 +127,12 @@ fun AppNavigation(hasCameraPermission: Boolean) {
                         viewModel      = historyVm,
                         onSessionClick = { sessionId ->
                             navController.navigate("replay/$sessionId")
+                        },
+                        onNavigateToLive = {
+                            navController.navigate("live") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
                     )
                 }

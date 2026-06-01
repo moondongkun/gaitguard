@@ -1,6 +1,7 @@
 ﻿package com.gaitguard.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,6 +56,7 @@ import com.gaitguard.app.ui.components.StatusPill
 import com.gaitguard.app.ui.components.StatusTone
 import com.gaitguard.app.ui.components.WaveformChart
 import com.gaitguard.app.ui.components.pulsingAlpha
+import com.gaitguard.app.ui.theme.BrandAmber
 import com.gaitguard.app.ui.theme.BrandNavy2
 import com.gaitguard.app.ui.theme.BrandNavy3
 import com.gaitguard.app.ui.theme.BrandRed
@@ -141,6 +144,9 @@ fun LiveScreen(
                         )
                     }
                     Spacer(Modifier.height(10.dp))
+                    Text("ELAPSED SESSION TIME", style = LabelCapsStyle,
+                        color = Color.White.copy(alpha = 0.62f))
+                    Spacer(Modifier.height(4.dp))
                     val h = TimeUnit.MILLISECONDS.toHours(uiState.elapsedMs)
                     val m = TimeUnit.MILLISECONDS.toMinutes(uiState.elapsedMs) % 60
                     val s = TimeUnit.MILLISECONDS.toSeconds(uiState.elapsedMs) % 60
@@ -166,8 +172,6 @@ fun LiveScreen(
                 StatusPill("${uiState.terrain.icon} Terrain · ${uiState.terrain.label}", StatusTone.Info, dot = false)
                 if (uiState.isSessionActive)
                     StatusPill("Live Data", StatusTone.Good)
-                if (uiState.markedEvents.isNotEmpty())
-                    StatusPill("${uiState.markedEvents.size} marked", StatusTone.Warn)
             }
 
             PostureAnalysisCallout(onClick = onNavigateToPosture)
@@ -179,8 +183,17 @@ fun LiveScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("IMU Gait Rhythm", style = HeadlineMdStyle.copy(fontSize = 14.sp), color = t.ink)
-                    Text("Last 4.0 s", style = LabelCapsStyle, color = t.inkMute)
+                    Column {
+                        Text("IMU GAIT RHYTHM", style = LabelCapsStyle, color = t.inkMute)
+                        Spacer(Modifier.height(2.dp))
+                        Text("Kinematic Waveform", style = HeadlineMdStyle.copy(fontSize = 16.sp), color = t.ink)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Box(Modifier.size(6.dp).clip(CircleShape)
+                            .background(BrandTeal2.copy(alpha = if (uiState.isSessionActive) pulsingAlpha() else 0.4f)))
+                        Text("LIVE DATA", style = LabelCapsStyle, color = BrandTeal2)
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
                 val stepIndices = mapStepIndices(result.stepTimestamps)
@@ -242,19 +255,78 @@ fun LiveScreen(
                     Text("L · ${leftPct.toInt()}%",  style = LabelCapsStyle, color = BrandNavy3)
                     Text("R · ${rightPct.toInt()}%", style = LabelCapsStyle, color = BrandTeal2)
                 }
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                ) {
-                    Box(
+                Spacer(Modifier.height(8.dp))
+                Box(Modifier.fillMaxWidth().height(18.dp)) {
+                    // split gradient track, centered
+                    Row(
                         modifier = Modifier
-                            .fillMaxWidth(leftPct / 100f)
-                            .background(Brush.horizontalGradient(listOf(BrandNavy2, BrandNavy3)))
-                    )
-                    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(BrandTeal2, BrandTeal))))
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .align(Alignment.Center)
+                            .clip(RoundedCornerShape(4.dp))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(leftPct / 100f)
+                                .fillMaxHeight()
+                                .background(Brush.horizontalGradient(listOf(BrandNavy2, BrandNavy3)))
+                        )
+                        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(BrandTeal2, BrandTeal))))
+                    }
+                    // balance knob at the L/R boundary
+                    Row(Modifier.fillMaxWidth().align(Alignment.Center)) {
+                        Spacer(Modifier.weight(leftPct.coerceIn(1f, 99f)))
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .border(3.dp, BrandTeal2, CircleShape)
+                        )
+                        Spacer(Modifier.weight((100f - leftPct).coerceIn(1f, 99f)))
+                    }
+                }
+            }
+
+            // ── Patient condition: fatigue level ─────────
+            GgCard {
+                Text("PATIENT CONDITION", style = LabelCapsStyle, color = t.inkMute)
+                Spacer(Modifier.height(2.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Fatigue Level", style = HeadlineMdStyle.copy(fontSize = 16.sp), color = t.ink)
+                    val fatigue = result.fatigueScore
+                    val tremorTone = when {
+                        fatigue >= 70f -> StatusTone.Bad
+                        fatigue >= 40f -> StatusTone.Warn
+                        else           -> StatusTone.Good
+                    }
+                    val tremorLabel = when {
+                        fatigue >= 70f -> "Severe tremor"
+                        fatigue >= 40f -> "Mild tremor"
+                        else           -> "Stable"
+                    }
+                    StatusPill(tremorLabel, tremorTone, dot = false)
+                }
+                Spacer(Modifier.height(10.dp))
+                val fatigue = result.fatigueScore.coerceIn(0f, 100f)
+                val fatigueColor = when {
+                    fatigue >= 70f -> BrandRed
+                    fatigue >= 40f -> BrandAmber
+                    else           -> BrandTeal2
+                }
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("${fatigue.toInt()}", fontFamily = LexendFamily, fontSize = 26.sp,
+                        fontWeight = FontWeight.SemiBold, color = fatigueColor, letterSpacing = (-0.5).sp)
+                    Text(" %", fontSize = 13.sp, color = t.inkMute, modifier = Modifier.padding(bottom = 3.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(99.dp)).background(t.border)) {
+                    Box(Modifier.fillMaxWidth((fatigue / 100f)).height(8.dp).clip(RoundedCornerShape(99.dp))
+                        .background(Brush.horizontalGradient(listOf(fatigueColor.copy(alpha = 0.7f), fatigueColor))))
                 }
             }
 

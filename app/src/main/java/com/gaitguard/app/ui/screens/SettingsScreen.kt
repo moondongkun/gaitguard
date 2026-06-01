@@ -98,11 +98,13 @@ fun SettingsScreen(
                                     .background(Brush.linearGradient(listOf(BrandTeal, BrandTeal2))),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("D", fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                                Text(
+                                    com.gaitguard.app.util.UserProfile.displayName(ctx).take(1).uppercase(),
+                                    fontSize = 22.sp, fontWeight = FontWeight.Bold,
                                     color = Color(0xFF003322))
                             }
                             Column(Modifier.weight(1f)) {
-                                Text("Dong Kun Moon", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text(com.gaitguard.app.util.UserProfile.displayName(ctx), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                 Text("2020-13236 · Solo Project",
                                     color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
                             }

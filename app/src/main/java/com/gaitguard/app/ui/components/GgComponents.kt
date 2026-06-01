@@ -43,7 +43,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -108,27 +107,14 @@ fun GaitGuardLockup(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
+        Image(
+            painter = painterResource(id = R.drawable.gg_logo),
+            contentDescription = "GaitGuard logo",
             modifier = Modifier
                 .size(32.dp)
                 .shadow(6.dp, RoundedCornerShape(9.dp), clip = false)
-                .clip(RoundedCornerShape(9.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF3069AB)),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.mipmap.ic_launcher_foreground),
-                    contentDescription = "GaitGuard app icon",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-            }
-        }
+                .clip(RoundedCornerShape(9.dp))
+        )
         Row {
             Text("Gait",  color = nameColor,   fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             Text("Guard", color = accentColor, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
@@ -407,4 +393,58 @@ fun pulsingAlpha(periodMs: Int = 1400): Float {
         label = "pa"
     )
     return a
+}
+
+/* ───────────────────────  Load-in animation helper  ──────────── */
+
+/**
+ * Returns a 0→1 progress that eases in once, on first composition (and replays
+ * whenever [key] changes). Drive ring sweeps, bar growth, etc. with this so the
+ * chart "fills" on screen open — matches the reference design's load animations.
+ */
+@Composable
+fun rememberAppearProgress(key: Any? = Unit, durationMs: Int = 1000): Float {
+    var play by remember(key) { androidx.compose.runtime.mutableStateOf(false) }
+    val p by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (play) 1f else 0f,
+        animationSpec = tween(durationMs, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "appear"
+    )
+    LaunchedEffect(key) { play = true }
+    return p
+}
+
+/* ───────────────────────  Sparkline  ─────────────────────────── */
+
+/** Minimal polyline sparkline (no axes). Used in compact trend chips. */
+@Composable
+fun Sparkline(
+    data: List<Float>,
+    modifier: Modifier = Modifier,
+    color: Color = BrandTeal,
+    strokeWidth: Float = 5f,
+) {
+    if (data.size < 2) return
+    val appear = rememberAppearProgress(data, durationMs = 900)
+    Canvas(modifier = modifier) {
+        val w = size.width; val h = size.height
+        val min = data.minOrNull() ?: 0f; val max = data.maxOrNull() ?: 1f
+        val span = (max - min).takeIf { it > 0f } ?: 1f
+        val n = data.size
+        val pts = data.mapIndexed { i, v ->
+            val x = (i / (n - 1f)) * w
+            val y = h - ((v - min) / span) * (h - strokeWidth) - strokeWidth / 2f
+            Offset(x, y)
+        }
+        // gradient stroke, revealed left→right by appear progress
+        val cutoff = (appear * (n - 1)).coerceIn(0f, (n - 1).toFloat())
+        for (i in 0 until n - 1) {
+            if (i > cutoff) break
+            drawLine(
+                brush = Brush.linearGradient(listOf(color, BrandTeal2)),
+                start = pts[i], end = pts[i + 1],
+                strokeWidth = strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+        }
+    }
 }

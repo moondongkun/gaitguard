@@ -27,7 +27,9 @@ object GaitConstants {
     const val POSTURE_SHOW_CONF     = 0.7f     // dismiss instruction above this
     const val GRAVITY_ALPHA         = 0.8f     // low-pass gravity filter
     const val PEAK_THRESHOLD_MULT   = 1.2f     // dynamic step threshold multiplier
-    const val MICRO_STUMBLE_MULT    = 3f       // lateral acc × baseline for stumble
+    const val MICRO_STUMBLE_MULT    = 4.5f     // lateral acc × baseline for stumble (higher = less sensitive)
+    const val MICRO_STUMBLE_FLOOR   = 2.5f     // absolute lateral-acc floor (m/s²) to ignore tiny spikes
+    const val MICRO_STUMBLE_COOLDOWN_MS = 2_000L // min gap between reported stumbles
     const val MICRO_STUMBLE_MS      = 200L
     const val GYRO_REVERSAL_MS      = 150L
     const val REST_DETECTION_SEC    = 60

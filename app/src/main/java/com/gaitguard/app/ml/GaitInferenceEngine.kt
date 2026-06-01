@@ -37,34 +37,66 @@ class GaitInferenceEngine(private val context: Context) {
     private val handler = Handler(handlerThread.looper)
 
     fun initialize() {
-        handler.post {
-            val warmStart = System.currentTimeMillis()
+        handler.post { loadModel() }
+    }
+
+    /** Loads (or reloads) the dynamic-range INT8 TFLite interpreter + GPU delegate and
+     *  records the warm-up latency. Must run on the inference HandlerThread. */
+    private fun loadModel() {
+        val warmStart = System.currentTimeMillis()
+        try {
+            val modelBuffer = FileUtil.loadMappedFile(context, "gait_model.tflite")
+            val options = Interpreter.Options()
+
+            // GPU delegate — fall back gracefully.
+            // GpuDelegate() can throw NoClassDefFoundError (an Error, not Exception)
+            // when GpuDelegateFactory$Options is missing on the device, so we must
+            // catch Throwable here rather than just Exception.
             try {
-                val modelBuffer = FileUtil.loadMappedFile(context, "gait_model.tflite")
-                val options = Interpreter.Options()
-
-                // GPU delegate — fall back gracefully.
-                // GpuDelegate() can throw NoClassDefFoundError (an Error, not Exception)
-                // when GpuDelegateFactory$Options is missing on the device, so we must
-                // catch Throwable here rather than just Exception.
-                try {
-                    gpuDelegate = GpuDelegate()
-                    options.addDelegate(gpuDelegate!!)
-                    Log.i(TAG, "GPU delegate enabled")
-                } catch (e: Throwable) {
-                    Log.w(TAG, "GPU delegate unavailable: ${e.message} — using CPU")
-                    gpuDelegate = null
-                    options.numThreads = 2
-                }
-
-                interpreter = Interpreter(modelBuffer, options)
-                isModelLoaded = true
-                warmUpTimeMs = System.currentTimeMillis() - warmStart
-                Log.i(TAG, "Model loaded in ${warmUpTimeMs}ms")
+                gpuDelegate = GpuDelegate()
+                options.addDelegate(gpuDelegate!!)
+                Log.i(TAG, "GPU delegate enabled")
             } catch (e: Throwable) {
-                Log.e(TAG, "Failed to load TFLite model: ${e.message}")
-                isModelLoaded = false
+                Log.w(TAG, "GPU delegate unavailable: ${e.message} — using CPU")
+                gpuDelegate = null
+                options.numThreads = 2
             }
+
+            interpreter = try {
+                Interpreter(modelBuffer, options)
+            } catch (e: Throwable) {
+                if (gpuDelegate == null) throw e
+                Log.w(TAG, "GPU delegate rejected model: ${e.message} — retrying on CPU")
+                try { gpuDelegate?.close() } catch (_: Throwable) {}
+                gpuDelegate = null
+                val cpuOptions = Interpreter.Options().apply { numThreads = 2 }
+                Interpreter(modelBuffer, cpuOptions)
+            }
+            isModelLoaded = true
+            warmUpTimeMs = System.currentTimeMillis() - warmStart
+            Log.i(TAG, "Model loaded in ${warmUpTimeMs}ms")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to load TFLite model: ${e.message}")
+            isModelLoaded = false
+        }
+    }
+
+    /**
+     * Tear down the live interpreter and reload the pruned + dynamic-range INT8 model,
+     * re-running warm-up and re-measuring latency. The heavy pruning/quantization
+     * itself is done offline (model/train.py); this reloads that artifact and
+     * re-benchmarks it on-device. Keeps the HandlerThread alive (unlike [release]).
+     * [onComplete] fires on the inference thread once the reload finishes.
+     */
+    fun reOptimize(onComplete: () -> Unit = {}) {
+        handler.post {
+            try { interpreter?.close() } catch (_: Throwable) {}
+            try { gpuDelegate?.close() } catch (_: Throwable) {}
+            interpreter = null
+            gpuDelegate = null
+            isModelLoaded = false
+            loadModel()
+            onComplete()
         }
     }
 
