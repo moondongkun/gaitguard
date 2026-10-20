@@ -1,10 +1,43 @@
-# GaitGuard
+<p align="center">
+  <img src="Mobile%20presentation/GaitGuard_offline_package/assets/gaitguard-icon.png" width="96" alt="GaitGuard icon">
+</p>
 
-GaitGuard is an Android gait and posture monitoring app built with Kotlin, Jetpack Compose, on-device TensorFlow Lite inference, and ML Kit pose detection. It records live phone IMU motion while the user walks, extracts gait features, runs a compact Temporal Convolutional Network (TCN), and stores session summaries for later review.
+<h1 align="center">GaitGuard</h1>
 
-This project is designed as a Mobile Computing and Its Applications mini-project. It demonstrates the full mobile pipeline: sensing, signal processing, on-device ML, local persistence, camera posture analysis, alerts, and model optimization.
+<p align="center">
+  Real-time gait, posture and fatigue monitoring on Android, with all machine learning running on the device.
+</p>
 
-Important: the fatigue and fall-risk outputs are a public-dataset proxy, not a clinical diagnosis. The training labels use temporal position within walking streams as a fatigue proxy: early windows are treated as normal/fresh and later windows as fatigue proxy.
+<p align="center">
+  <img src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin">
+  <img src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose">
+  <img src="https://img.shields.io/badge/TensorFlow%20Lite-INT8-FF6F00?logo=tensorflow&logoColor=white" alt="TensorFlow Lite">
+  <img src="https://img.shields.io/badge/ML%20Kit-Pose%20Detection-34A853?logo=google&logoColor=white" alt="ML Kit">
+  <img src="https://img.shields.io/badge/minSdk-29-3DDC84?logo=android&logoColor=white" alt="minSdk 29">
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.jpg" width="19%" alt="Metrics dashboard">
+  <img src="docs/screenshots/live.jpg" width="19%" alt="Live gait monitoring">
+  <img src="docs/screenshots/posture.jpg" width="19%" alt="Spinal health assessment">
+  <img src="docs/screenshots/history.jpg" width="19%" alt="Gait history">
+  <img src="docs/screenshots/engine.jpg" width="19%" alt="Model engine screen">
+</p>
+
+GaitGuard turns a phone into a gait lab. While you walk, it samples the
+accelerometer and gyroscope at 50 Hz, extracts cadence, symmetry and stability
+features, and runs a pruned, INT8-quantised Temporal Convolutional Network
+(25 KB) to estimate fatigue and fall risk. Separately, it uses the camera with
+ML Kit pose detection to score spinal posture. Sessions are stored locally with
+Room for history, replay, PDF reports and CSV export.
+
+Built for *Mobile Computing and Its Applications* at Seoul National University
+(2026). It covers the full mobile ML pipeline: sensing, signal processing,
+on-device inference, persistence, camera vision, alerts and model compression.
+
+> **Not a medical device.** Fatigue and fall-risk outputs come from a model
+> trained on public-dataset *proxy* labels (see [Limitations](#limitations)).
 
 ## Feature Tour
 
@@ -96,14 +129,17 @@ The app and README should match `model/benchmark.md`.
 | Fatigue-proxy accuracy - UCI-HAR hold-out | 40.0% | 58.5% | 60.0% | 60.0% |
 | Model size | 0.14 MB | 0.04 MB | 0.04 MB | 0.02 MB |
 | Size reduction vs unoptimized TCN | - | - | 0% | 43% |
-| Inference latency (Galaxy S22) | 45 ms | 30 ms | 18 ms | 18 ms |
+| Inference latency (Galaxy S22)\* | 45 ms | 30 ms | 18 ms | 18 ms |
+
+\* Latency values are fixed figures written into `model/train.py`; the training
+script does not measure them. The in-app Engine screen reports real on-device
+inference and warm-up latency.
 
 Benchmark notes:
 
 - Primary dataset: WISDM v1.1 walking segments.
 - Secondary sanity check: UCI-HAR walking subset.
 - Window: 200 samples at 50 Hz, 50% overlap.
-- Latency device: Samsung Galaxy S22, Exynos 2200, GPU delegate.
 - Accuracy is for the public-dataset fatigue proxy task, not clinical fatigue diagnosis.
 - Size reduction is relative to the unoptimized TCN of the same architecture.
 
@@ -134,15 +170,13 @@ On macOS/Linux:
 
 The debug APK is generated under `app/build/outputs/apk/debug/`.
 
-### Install Existing APK
-
-The available APK artifact in this repo is:
+### Install On A Device
 
 ```bash
-adb install apk/GaitGuard-release-unsigned.apk
+./gradlew installDebug
 ```
 
-Because this APK is unsigned, installation may require developer-device settings or rebuilding a debug APK locally.
+APKs are not committed to the repository; build one locally as shown above.
 
 ### Retrain Or Re-Export The Model
 
@@ -206,8 +240,9 @@ model/
   train.py                                 training, pruning, quantization, benchmark generation
   benchmark.md                             current model benchmark table
   *.tflite                                 baseline, unoptimized, pruned, and INT8 artifacts
-apk/
-  GaitGuard-release-unsigned.apk           available packaged APK artifact
+docs/screenshots/                          README screenshots
+Mobile presentation/                       offline HTML slide deck with demo videos
+presentation/, project_proposal/           course presentation and proposal
 gradle/
   libs.versions.toml                       AGP, Kotlin, and KSP plugin versions
 ```
@@ -215,6 +250,8 @@ gradle/
 ## Limitations
 
 - The fatigue labels are proxy labels from temporal position within walking streams, not medically validated fatigue annotations.
+- With a 60/40 label split, the TCN variants' 60.0% accuracy matches the majority-class rate, so the compact model is not yet learning the proxy task. The optimisation results show size and speed, not predictive gains.
+- The hold-out split is stratified at random over 50%-overlapping windows, so neighbouring windows can appear in both train and test; the LSTM's 85.4% WISDM accuracy is likely optimistic. A subject- or stream-level split would give a fairer estimate.
 - Public datasets used here do not contain the exact real-world target signal for clinical fatigue detection.
 - WISDM has accelerometer data; gyroscope channels are zero-padded in the training loader.
 - Real hardware behavior depends on where the phone is carried, sensor quality, calibration quality, and whether the user grants the required permissions.
@@ -235,3 +272,7 @@ cat model/benchmark.md
 ```
 
 On Windows PowerShell, use `.\gradlew.bat assembleDebug` instead of `./gradlew assembleDebug`.
+
+## License
+
+[MIT](LICENSE) © Dongkun Moon

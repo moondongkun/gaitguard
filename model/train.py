@@ -535,7 +535,7 @@ def write_benchmark(results):
 - Quantization: dynamic-range post-training quantization stores eligible weights as INT8 while keeping activations and app-facing input/output tensors float32 for Android TFLite 2.16.1 compatibility
 - Size reduction and accuracy drop columns are relative to the unoptimized TCN (same architecture, before any optimization)
 - Accuracy is for the public-dataset fatigue proxy task used to validate optimization, not a clinical fatigue diagnosis
-- Latency measured on Samsung Galaxy S22 (Exynos 2200) with GPU delegate
+- Latency values are fixed figures set in train.py, not measured by this script; the Engine screen reports live on-device latency
 """
 
     bm_path = os.path.join(SCRIPT_DIR, "benchmark.md")
